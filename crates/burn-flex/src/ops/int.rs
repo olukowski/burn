@@ -661,6 +661,32 @@ impl IntTensorOps<Flex> for Flex {
         int_scalar_op(tensor, 0, |a, _| !a)
     }
 
+    fn count_ones(tensor: IntTensor<Flex>) -> IntTensor<Flex> {
+        let tensor = tensor.to_contiguous();
+        let shape = tensor.layout().shape().clone();
+        let n = shape.num_elements();
+
+        macro_rules! count_ones {
+            ($elem:ty) => {{
+                let storage: &[$elem] = tensor.storage();
+                let counts: Vec<u32> = storage[..n].iter().map(|value| value.count_ones()).collect();
+                FlexTensor::new(Bytes::from_elems(counts), Layout::contiguous(shape), DType::U32)
+            }};
+        }
+
+        match tensor.dtype() {
+            DType::I64 => count_ones!(i64),
+            DType::I32 => count_ones!(i32),
+            DType::I16 => count_ones!(i16),
+            DType::I8 => count_ones!(i8),
+            DType::U64 => count_ones!(u64),
+            DType::U32 => count_ones!(u32),
+            DType::U16 => count_ones!(u16),
+            DType::U8 => count_ones!(u8),
+            dt => panic!("count_ones: unsupported dtype {:?}", dt),
+        }
+    }
+
     // Shift amounts masked to type width via wrapping_shl/wrapping_shr.
     fn bitwise_left_shift(lhs: IntTensor<Flex>, rhs: IntTensor<Flex>) -> IntTensor<Flex> {
         int_binary_op(lhs, rhs, |a, b| a.wrapping_shl(b as u32))
