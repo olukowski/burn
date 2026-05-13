@@ -6,8 +6,8 @@ use super::{
 use crate::engine::{codegen::ir::QuantSchemeFuse, scoring::Scoring};
 use burn_fusion::{FuserProperties, FuserStatus, OperationFuser};
 use burn_ir::{
-    BaseOperationIr, BinaryOpIr, FloatOperationIr, IntOperationIr, NumericOperationIr, OperationIr,
-    ScalarOpIr, TensorIr, UnaryOpIr,
+    BaseOperationIr, BinaryOpIr, BoolOperationIr, FloatOperationIr, IntOperationIr,
+    NumericOperationIr, OperationIr, ScalarOpIr, TensorIr, UnaryOpIr,
 };
 use burn_std::{
     DType, Shape,
@@ -138,6 +138,13 @@ impl OperationFuser<FuseTrace> for TraceOperationFuser {
                 if !self.fuse_base(ops) {
                     self.status = FuserStatus::Closed;
                     self.log_closed(op, prev_num_ops, "base fuse rejected");
+                    return;
+                }
+            }
+            OperationIr::Bool(ops) => {
+                if !self.fuse_bool(ops) {
+                    self.status = FuserStatus::Closed;
+                    self.log_closed(op, prev_num_ops, "bool fuse rejected");
                     return;
                 }
             }
@@ -679,6 +686,17 @@ impl TraceOperationFuser {
                 .fuse_scalar_ops(desc, |lhs, rhs, out| {
                     FuseOp::BitwiseRightShift(BinaryFuseArgs { lhs, rhs, out })
                 }),
+            _ => false,
+        }
+    }
+
+    fn fuse_bool(&mut self, op: &BoolOperationIr) -> bool {
+        match op {
+            BoolOperationIr::IntoInt(desc) => {
+                self.fuse_unary_op(&desc.input, &desc.out, |input, out| {
+                    FuseOp::Assign(UnaryFuseArgs { input, out })
+                })
+            }
             _ => false,
         }
     }

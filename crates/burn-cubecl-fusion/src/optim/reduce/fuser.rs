@@ -301,6 +301,11 @@ impl<R: Runtime> OperationFuser<CubeOptimization<R>> for ReduceFuser<R> {
     fn properties(&self) -> burn_fusion::FuserProperties {
         let mut properties = self.fuser.properties();
         properties.ready = self.reduce.is_some();
+        if properties.ready {
+            // Prefer a real fused reduction over an elementwise prefix that would
+            // materialize the reduce input and leave the reduction for a later launch.
+            properties.score += 1;
+        }
         properties
     }
 
