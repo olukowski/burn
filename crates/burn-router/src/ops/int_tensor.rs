@@ -5,7 +5,7 @@ use burn_std::{BoolDType, FloatDType};
 use crate::{BackendRouter, RunnerChannel, RunnerClient, get_client};
 use burn_backend::tensor::{BoolTensor, Device, FloatTensor, IndexingUpdateOp, IntElem, IntTensor};
 use burn_backend::{
-    Distribution, Element, IntDType, Scalar, Shape, Slice, TensorData, ops::IntTensorOps,
+    DType, Distribution, Element, IntDType, Scalar, Shape, Slice, TensorData, ops::IntTensorOps,
 };
 use burn_ir::{
     BaseOperationIr, BinaryOpIr, CastOpIr, CatOpIr, ClampOpIr, CreationOpIr, DimOpIr, FlipOpIr,
@@ -1008,6 +1008,17 @@ impl<R: RunnerChannel> IntTensorOps<Self> for BackendRouter<R> {
 
         client
             .register(OperationIr::Int(IntOperationIr::BitwiseNot(desc)))
+            .output()
+    }
+
+    fn count_ones(tensor: IntTensor<Self>) -> IntTensor<Self> {
+        let client = tensor.client.clone();
+        let desc = UnaryOpIr::create_comparison(tensor.into_ir(), DType::U32, || {
+            client.create_empty_handle()
+        });
+
+        client
+            .register(OperationIr::Int(IntOperationIr::CountOnes(desc)))
             .output()
     }
 

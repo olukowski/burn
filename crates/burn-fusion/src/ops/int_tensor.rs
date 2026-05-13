@@ -7,7 +7,7 @@ use crate::{
     unary_int_ops,
 };
 use burn_backend::{
-    BoolDType, Distribution, ExecutionError, FloatDType, IntDType, Scalar, Shape, Slice,
+    BoolDType, DType, Distribution, ExecutionError, FloatDType, IntDType, Scalar, Shape, Slice,
     TensorData,
     ops::IntTensorOps,
     tensor::{BoolTensor, Device, FloatTensor, IndexingUpdateOp, IntTensor},
@@ -1973,6 +1973,25 @@ impl<B: FusionBackend> IntTensorOps<Self> for Fusion<B> {
                 streams,
                 OperationIr::Int(IntOperationIr::BitwiseNot(desc.clone())),
                 BitwiseNotOps::<B>::new(desc),
+            )
+            .output()
+    }
+
+    fn count_ones(tensor: IntTensor<Self>) -> IntTensor<Self> {
+        unary_int_ops!(CountOnesOps, B::count_ones);
+
+        let streams = OperationStreams::with_inputs([&tensor]);
+
+        let client = tensor.client.clone();
+        let desc = UnaryOpIr::create_comparison(tensor.into_ir(), DType::U32, || {
+            client.create_empty_handle()
+        });
+
+        client
+            .register(
+                streams,
+                OperationIr::Int(IntOperationIr::CountOnes(desc.clone())),
+                CountOnesOps::<B>::new(desc),
             )
             .output()
     }

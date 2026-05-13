@@ -586,6 +586,10 @@ where
         unary_basic_int::launch::<R, _>(tensor, |_| BasicIntUnaryKind::BitwiseNot)
     }
 
+    fn count_ones(tensor: IntTensor<Self>) -> IntTensor<Self> {
+        kernel::launch_count_ones(tensor)
+    }
+
     fn bitwise_left_shift(lhs: IntTensor<Self>, rhs: IntTensor<Self>) -> IntTensor<Self> {
         launch_binop_int::<R, kernel::BitwiseShlOp>(lhs, rhs)
     }

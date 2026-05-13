@@ -88,6 +88,54 @@ where
     }
 }
 
+#[cube(launch_unchecked, address_type = "dynamic")]
+pub(crate) fn count_ones_kernel<I: Int, N: Size>(
+    input: &LinearView<Vector<I, N>>,
+    output: &mut LinearView<Vector<u32, N>, ReadWrite>,
+    #[define(I)] _dtype: StorageType,
+) {
+    if !output.is_in_bounds(ABSOLUTE_POS) {
+        terminate!();
+    }
+
+    output[ABSOLUTE_POS] = input[ABSOLUTE_POS].count_ones();
+}
+
+pub(crate) fn launch_count_ones<R>(tensor: CubeTensor<R>) -> CubeTensor<R>
+where
+    R: CubeRuntime,
+{
+    let vector_size = max_vector_size(&tensor);
+    let client = tensor.client.clone();
+    let num_elems = tensor.meta.num_elements();
+
+    let working_units = num_elems / vector_size as usize;
+    let cube_dim = CubeDim::new(&tensor.client, working_units);
+    let cube_count = calculate_cube_count_elemwise(&tensor.client, working_units, cube_dim);
+    let input_dtype = tensor.dtype;
+    let output = empty_device_dtype(
+        tensor.client.clone(),
+        tensor.device.clone(),
+        tensor.shape(),
+        burn_backend::DType::U32,
+    );
+
+    unsafe {
+        count_ones_kernel::launch_unchecked::<R>(
+            &client,
+            cube_count,
+            cube_dim,
+            address_type!(tensor, output),
+            vector_size,
+            tensor.into_linear_view(),
+            output.clone().into_linear_view(),
+            input_dtype.into(),
+        );
+    }
+
+    output
+}
+
 pub(crate) mod unary_basic_int {
 
     use cubecl::num_traits::{One, Zero};

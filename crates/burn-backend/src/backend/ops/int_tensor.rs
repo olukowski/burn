@@ -1379,6 +1379,13 @@ pub trait IntTensorOps<B: Backend> {
     /// Bitwise NOT operation for Int Tensors
     fn bitwise_not(tensor: IntTensor<B>) -> IntTensor<B>;
 
+    /// Counts the number of one bits in each integer element.
+    ///
+    /// The output tensor uses the unsigned 32-bit integer dtype.
+    fn count_ones(_tensor: IntTensor<B>) -> IntTensor<B> {
+        unimplemented!("count_ones is not implemented for this backend")
+    }
+
     /// Bitwise left shift operation for Int Tensors
     fn bitwise_left_shift(lhs: IntTensor<B>, rhs: IntTensor<B>) -> IntTensor<B>;
 

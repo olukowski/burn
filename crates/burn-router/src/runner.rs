@@ -1067,6 +1067,9 @@ impl<B: BackendIr> RunnerClient for Runner<B> {
                 IntOperationIr::BitwiseNot(desc) => {
                     unary_int_ops!(handles, desc, B::bitwise_not)
                 }
+                IntOperationIr::CountOnes(desc) => {
+                    unary_int_ops!(handles, desc, B::count_ones)
+                }
                 IntOperationIr::BitwiseLeftShift(desc) => {
                     binary_int_ops!(handles, desc, B::bitwise_left_shift)
                 }

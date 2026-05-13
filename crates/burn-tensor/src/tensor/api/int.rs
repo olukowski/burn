@@ -135,6 +135,13 @@ where
         Self::new(B::bitwise_not(self.primitive))
     }
 
+    /// Counts the number of one bits in each integer element.
+    ///
+    /// The output tensor uses the unsigned 32-bit integer dtype.
+    pub fn count_ones(self) -> Self {
+        Self::new(B::count_ones(self.primitive))
+    }
+
     /// Applies the bitwise logical and operation with each bit in the scalar and the integers in the tensor.
     pub fn bitwise_and_scalar(self, other: B::IntElem) -> Self {
         let other = Scalar::new(other, &self.dtype());

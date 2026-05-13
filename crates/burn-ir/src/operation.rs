@@ -682,6 +682,10 @@ pub enum IntOperationIr {
     BitwiseNot(UnaryOpIr),
     /// Operation corresponding to:
     ///
+    /// Int => [count ones](burn_backend::ops::IntTensorOps::count_ones).
+    CountOnes(UnaryOpIr),
+    /// Operation corresponding to:
+    ///
     /// Int => [bitwise left shift](burn_backend::ops::IntTensorOps::bitwise_left_shift).
     BitwiseLeftShift(BinaryOpIr),
     /// Operation corresponding to:
@@ -2637,6 +2641,7 @@ impl IntOperationIr {
             IntOperationIr::BitwiseXor(repr) => Box::new([&repr.lhs, &repr.rhs].into_iter()),
             IntOperationIr::BitwiseXorScalar(repr) => Box::new([&repr.lhs].into_iter()),
             IntOperationIr::BitwiseNot(repr) => Box::new([&repr.input].into_iter()),
+            IntOperationIr::CountOnes(repr) => Box::new([&repr.input].into_iter()),
             IntOperationIr::BitwiseLeftShift(repr) => Box::new([&repr.lhs, &repr.rhs].into_iter()),
             IntOperationIr::BitwiseLeftShiftScalar(repr) => Box::new([&repr.lhs].into_iter()),
             IntOperationIr::BitwiseRightShift(repr) => Box::new([&repr.lhs, &repr.rhs].into_iter()),
@@ -2655,6 +2660,7 @@ impl IntOperationIr {
             IntOperationIr::BitwiseXor(repr) => Box::new([&repr.out].into_iter()),
             IntOperationIr::BitwiseXorScalar(repr) => Box::new([&repr.out].into_iter()),
             IntOperationIr::BitwiseNot(repr) => Box::new([&repr.out].into_iter()),
+            IntOperationIr::CountOnes(repr) => Box::new([&repr.out].into_iter()),
             IntOperationIr::BitwiseLeftShift(repr) => Box::new([&repr.out].into_iter()),
             IntOperationIr::BitwiseLeftShiftScalar(repr) => Box::new([&repr.out].into_iter()),
             IntOperationIr::BitwiseRightShift(repr) => Box::new([&repr.out].into_iter()),
@@ -2695,6 +2701,9 @@ impl IntOperationIr {
                 repr.lhs.mark_read_only(nodes, &mut output);
             }
             IntOperationIr::BitwiseNot(repr) => {
+                repr.input.mark_read_only(nodes, &mut output);
+            }
+            IntOperationIr::CountOnes(repr) => {
                 repr.input.mark_read_only(nodes, &mut output);
             }
             IntOperationIr::BitwiseLeftShift(repr) => {

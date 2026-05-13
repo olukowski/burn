@@ -811,6 +811,10 @@ impl RelativeOps for IntOperationIr {
                 input: desc.input.to_relative(converter),
                 out: desc.out.to_relative(converter),
             }),
+            IntOperationIr::CountOnes(desc) => IntOperationIr::CountOnes(UnaryOpIr {
+                input: desc.input.to_relative(converter),
+                out: desc.out.to_relative(converter),
+            }),
             IntOperationIr::BitwiseLeftShift(desc) => {
                 IntOperationIr::BitwiseLeftShift(BinaryOpIr {
                     lhs: desc.lhs.to_relative(converter),

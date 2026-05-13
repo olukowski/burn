@@ -6,8 +6,8 @@ use super::{
 use crate::engine::{codegen::ir::QuantSchemeFuse, scoring::Scoring};
 use burn_fusion::{FuserProperties, FuserStatus, OperationFuser};
 use burn_ir::{
-    BaseOperationIr, BinaryOpIr, FloatOperationIr, NumericOperationIr, OperationIr, ScalarOpIr,
-    TensorIr, UnaryOpIr,
+    BaseOperationIr, BinaryOpIr, FloatOperationIr, IntOperationIr, NumericOperationIr, OperationIr,
+    ScalarOpIr, TensorIr, UnaryOpIr,
 };
 use burn_std::{
     DType, Shape,
@@ -124,6 +124,13 @@ impl OperationFuser<FuseTrace> for TraceOperationFuser {
                 if !self.fuse_numeric(ops) {
                     self.status = FuserStatus::Closed;
                     self.log_closed(op, prev_num_ops, "numeric fuse rejected");
+                    return;
+                }
+            }
+            OperationIr::Int(ops) => {
+                if !self.fuse_int(ops) {
+                    self.status = FuserStatus::Closed;
+                    self.log_closed(op, prev_num_ops, "int fuse rejected");
                     return;
                 }
             }
@@ -624,6 +631,54 @@ impl TraceOperationFuser {
                     Some(())
                 })
             }
+            _ => false,
+        }
+    }
+
+    fn fuse_int(&mut self, op: &IntOperationIr) -> bool {
+        match op {
+            IntOperationIr::BitwiseAnd(desc) => self.fuse_binary_ops(desc, |lhs, rhs, out| {
+                FuseOp::BitwiseAnd(BinaryFuseArgs { lhs, rhs, out })
+            }),
+            IntOperationIr::BitwiseAndScalar(desc) => self
+                .fuse_scalar_ops(desc, |lhs, rhs, out| {
+                    FuseOp::BitwiseAnd(BinaryFuseArgs { lhs, rhs, out })
+                }),
+            IntOperationIr::BitwiseOr(desc) => self.fuse_binary_ops(desc, |lhs, rhs, out| {
+                FuseOp::BitwiseOr(BinaryFuseArgs { lhs, rhs, out })
+            }),
+            IntOperationIr::BitwiseOrScalar(desc) => self.fuse_scalar_ops(desc, |lhs, rhs, out| {
+                FuseOp::BitwiseOr(BinaryFuseArgs { lhs, rhs, out })
+            }),
+            IntOperationIr::BitwiseXor(desc) => self.fuse_binary_ops(desc, |lhs, rhs, out| {
+                FuseOp::BitwiseXor(BinaryFuseArgs { lhs, rhs, out })
+            }),
+            IntOperationIr::BitwiseXorScalar(desc) => self
+                .fuse_scalar_ops(desc, |lhs, rhs, out| {
+                    FuseOp::BitwiseXor(BinaryFuseArgs { lhs, rhs, out })
+                }),
+            IntOperationIr::BitwiseNot(desc) => self.fuse_unary_ops(desc, |input, out| {
+                FuseOp::BitwiseNot(UnaryFuseArgs { input, out })
+            }),
+            IntOperationIr::CountOnes(desc) => self.fuse_unary_ops(desc, |input, out| {
+                FuseOp::CountOnes(UnaryFuseArgs { input, out })
+            }),
+            IntOperationIr::BitwiseLeftShift(desc) => self
+                .fuse_binary_ops(desc, |lhs, rhs, out| {
+                    FuseOp::BitwiseLeftShift(BinaryFuseArgs { lhs, rhs, out })
+                }),
+            IntOperationIr::BitwiseLeftShiftScalar(desc) => self
+                .fuse_scalar_ops(desc, |lhs, rhs, out| {
+                    FuseOp::BitwiseLeftShift(BinaryFuseArgs { lhs, rhs, out })
+                }),
+            IntOperationIr::BitwiseRightShift(desc) => self
+                .fuse_binary_ops(desc, |lhs, rhs, out| {
+                    FuseOp::BitwiseRightShift(BinaryFuseArgs { lhs, rhs, out })
+                }),
+            IntOperationIr::BitwiseRightShiftScalar(desc) => self
+                .fuse_scalar_ops(desc, |lhs, rhs, out| {
+                    FuseOp::BitwiseRightShift(BinaryFuseArgs { lhs, rhs, out })
+                }),
             _ => false,
         }
     }

@@ -475,6 +475,21 @@ where
         execute_with_int_dtype!(tensor, NdArrayBitOps::bitnot)
     }
 
+    fn count_ones(tensor: NdArrayTensor) -> NdArrayTensor {
+        macro_rules! count_ones {
+            ($tensor:expr, [$($variant:ident),*]) => {
+                match $tensor {
+                    $(NdArrayTensor::$variant(storage) => {
+                        storage.into_shared().mapv(|value| value.count_ones()).into_shared().into()
+                    })*
+                    other => panic!("Unsupported dtype: {:?}", other.dtype()),
+                }
+            };
+        }
+
+        count_ones!(tensor, [I64, I32, I16, I8, U64, U32, U16, U8])
+    }
+
     fn bitwise_left_shift(lhs: NdArrayTensor, rhs: NdArrayTensor) -> NdArrayTensor {
         execute_with_int_dtype!((lhs, rhs), I, |lhs, rhs| {
             NdArrayMathOps::elementwise_op(lhs, rhs, |a: &I, b: &I| {

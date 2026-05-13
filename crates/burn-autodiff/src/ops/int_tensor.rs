@@ -380,6 +380,10 @@ impl<B: Backend, C: CheckpointStrategy> IntTensorOps<Self> for Autodiff<B, C> {
         B::bitwise_not(tensor)
     }
 
+    fn count_ones(tensor: IntTensor<Self>) -> IntTensor<Self> {
+        B::count_ones(tensor)
+    }
+
     fn bitwise_left_shift(lhs: IntTensor<Self>, rhs: IntTensor<Self>) -> IntTensor<Self> {
         B::bitwise_left_shift(lhs, rhs)
     }

@@ -259,6 +259,17 @@ fn fuse(
             FuseOp::Log1p(op) => log1p::<E, N>(inputs, outputs, locals, pos, op, config),
             FuseOp::Recip(op) => recip::<E, N>(inputs, outputs, locals, pos, op, config),
             FuseOp::Assign(op) => assign::<E, N>(inputs, outputs, locals, pos, op, config),
+            FuseOp::BitwiseAnd(op) => bitwise_and::<E, N>(inputs, outputs, locals, pos, op, config),
+            FuseOp::BitwiseOr(op) => bitwise_or::<E, N>(inputs, outputs, locals, pos, op, config),
+            FuseOp::BitwiseXor(op) => bitwise_xor::<E, N>(inputs, outputs, locals, pos, op, config),
+            FuseOp::BitwiseNot(op) => bitwise_not::<E, N>(inputs, outputs, locals, pos, op, config),
+            FuseOp::BitwiseLeftShift(op) => {
+                bitwise_left_shift::<E, N>(inputs, outputs, locals, pos, op, config)
+            }
+            FuseOp::BitwiseRightShift(op) => {
+                bitwise_right_shift::<E, N>(inputs, outputs, locals, pos, op, config)
+            }
+            FuseOp::CountOnes(op) => count_ones::<E, N>(inputs, outputs, locals, pos, op, config),
             FuseOp::Exp(op) => exp::<E, N>(inputs, outputs, locals, pos, op, config),
             FuseOp::Cos(op) => cos::<E, N>(inputs, outputs, locals, pos, op, config),
             FuseOp::Sin(op) => sin::<E, N>(inputs, outputs, locals, pos, op, config),
@@ -325,6 +336,26 @@ macro_rules! binary_op {
     ($ident:ident, $op:tt) => {
         #[cube]
         fn $ident<C: Numeric, N: Size>(
+            inputs: &GlobalArgs,
+            outputs: &mut GlobalArgs,
+            locals: &mut LocalArgs,
+            write_pos: usize,
+            #[comptime] op: BinaryFuseArgs,
+            #[comptime] config: &FuseBlockConfig,
+        ) {
+            let lhs = read::<C, N>(inputs, outputs, &locals, write_pos, op.lhs, config);
+            let rhs = read::<C, N>(inputs, outputs, &locals, write_pos, op.rhs, config);
+            let result = lhs $op rhs;
+
+            write::<C, N>(inputs, outputs, locals, write_pos, result, op.out, config);
+        }
+    };
+}
+
+macro_rules! binary_int_op {
+    ($ident:ident, $op:tt) => {
+        #[cube]
+        fn $ident<C: Int, N: Size>(
             inputs: &GlobalArgs,
             outputs: &mut GlobalArgs,
             locals: &mut LocalArgs,
@@ -842,6 +873,11 @@ binary_op!(add, +);
 binary_op!(mul, *);
 binary_op!(div, /);
 binary_op!(sub, -);
+binary_int_op!(bitwise_and, &);
+binary_int_op!(bitwise_or, |);
+binary_int_op!(bitwise_xor, ^);
+binary_int_op!(bitwise_left_shift, <<);
+binary_int_op!(bitwise_right_shift, >>);
 
 comparison_op!(equal, ==);
 comparison_op!(greater, >);
@@ -862,3 +898,33 @@ unary_func!(tanh, Vector::<C, N>::tanh, Float);
 unary_func!(erf, Vector::<C, N>::erf, Float);
 unary_func!(recip, Vector::<C, N>::recip, Float);
 unary_func!(abs, Vector::<C, N>::abs, Numeric);
+
+#[cube]
+fn bitwise_not<C: Int, N: Size>(
+    inputs: &GlobalArgs,
+    outputs: &mut GlobalArgs,
+    locals: &mut LocalArgs,
+    write_pos: usize,
+    #[comptime] op: UnaryFuseArgs,
+    #[comptime] config: &FuseBlockConfig,
+) {
+    let input = read::<C, N>(inputs, outputs, &locals, write_pos, op.input, config);
+    let result = !input;
+
+    write::<C, N>(inputs, outputs, locals, write_pos, result, op.out, config);
+}
+
+#[cube]
+fn count_ones<C: Int, N: Size>(
+    inputs: &GlobalArgs,
+    outputs: &mut GlobalArgs,
+    locals: &mut LocalArgs,
+    write_pos: usize,
+    #[comptime] op: UnaryFuseArgs,
+    #[comptime] config: &FuseBlockConfig,
+) {
+    let input = read::<C, N>(inputs, outputs, &locals, write_pos, op.input, config);
+    let result = input.count_ones();
+
+    write::<u32, N>(inputs, outputs, locals, write_pos, result, op.out, config);
+}
