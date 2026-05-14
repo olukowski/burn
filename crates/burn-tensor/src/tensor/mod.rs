@@ -5,29 +5,21 @@ mod api;
 pub use api::*;
 
 // Re-exported types
-pub use burn_backend::{
-    BoolDType, BoolStore, DType, DataError, FloatDType, IntDType, TensorData, TensorMetadata,
-    TensorPrimitive, Tolerance,
-    distribution::*,
-    element::*,
-    indexing::*,
-    ops::TransactionPrimitive,
-    shape::*,
-    slice::*,
-    tensor::{Bool, Float, Int, TensorKind},
+pub use burn_std::{
+    BoolDType, BoolStore, DType, DataError, FloatDType, IndexingUpdateOp, IntDType, TensorData,
+    Tolerance, distribution::*, element::*, indexing::*, s, shape::*, slice::*,
 };
+
+/// The tensor kind module.
+pub mod kind;
+pub use kind::{Bool, Float, Int};
 
 /// The activation module.
 pub mod activation;
 
-/// The backend module.
-pub mod backend {
-    pub use burn_backend::backend::*;
-}
-
 /// The container module.
 pub mod container {
-    pub use burn_backend::tensor::TensorContainer;
+    pub use burn_std::tensor::container::TensorContainer;
 }
 
 /// The grid module.
@@ -47,10 +39,8 @@ pub mod signal;
 
 /// Operations on tensors module.
 pub mod ops {
-    pub use burn_backend::backend::ops::*;
-    pub use burn_backend::tensor::{
-        BoolElem, BoolTensor, Device, FloatElem, FloatTensor, IntElem, IntTensor, QuantizedTensor,
-    };
+    pub(crate) use crate::bridge::*;
+    pub use burn_std::ops::*;
 }
 
 /// Tensor quantization module.
@@ -61,5 +51,3 @@ pub use report::*;
 
 #[cfg(feature = "std")]
 mod report;
-
-pub use ops::Device; // Re-export device so that it's available from `burn_tensor::Device`.

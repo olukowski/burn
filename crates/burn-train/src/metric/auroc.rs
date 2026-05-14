@@ -1,47 +1,43 @@
 use core::f64;
-use core::marker::PhantomData;
 
 use super::MetricMetadata;
 use super::state::{FormatOptions, NumericMetricState};
 use crate::metric::{Metric, MetricName, Numeric, SerializedEntry};
-use burn_core::tensor::backend::Backend;
-use burn_core::tensor::{ElementConversion, Int, Tensor};
+use burn_core::tensor::{Int, Tensor};
 
 /// The Area Under the Receiver Operating Characteristic Curve (AUROC, also referred to as [ROC AUC](https://en.wikipedia.org/wiki/Receiver_operating_characteristic)) for binary classification.
 #[derive(Clone)]
-pub struct AurocMetric<B: Backend> {
+pub struct AurocMetric {
     name: MetricName,
     state: NumericMetricState,
-    _b: PhantomData<B>,
 }
 
 /// The [AUROC metric](AurocMetric) input type.
 #[derive(new)]
-pub struct AurocInput<B: Backend> {
-    outputs: Tensor<B, 2>,
-    targets: Tensor<B, 1, Int>,
+pub struct AurocInput {
+    outputs: Tensor<2>,
+    targets: Tensor<1, Int>,
 }
 
-impl<B: Backend> Default for AurocMetric<B> {
+impl Default for AurocMetric {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<B: Backend> AurocMetric<B> {
+impl AurocMetric {
     /// Creates the metric.
     pub fn new() -> Self {
         Self {
             name: MetricName::new("AUROC".to_string()),
             state: Default::default(),
-            _b: PhantomData,
         }
     }
 
-    fn binary_auroc(&self, probabilities: &Tensor<B, 1>, targets: &Tensor<B, 1, Int>) -> f64 {
+    fn binary_auroc(&self, probabilities: &Tensor<1>, targets: &Tensor<1, Int>) -> f64 {
         let n = targets.dims()[0];
 
-        let n_pos = targets.clone().sum().into_scalar().elem::<u64>() as usize;
+        let n_pos = targets.clone().sum().into_scalar::<u64>() as usize;
 
         // Early return if we don't have both positive and negative samples
         if n_pos == 0 || n_pos == n {
@@ -66,21 +62,20 @@ impl<B: Backend> AurocMetric<B> {
         let ties = prob_i.equal(prob_j).int();
 
         // Calculate AUC components
-        let num_pairs = valid_pairs.clone().sum().into_scalar().elem::<f64>();
+        let num_pairs = valid_pairs.clone().sum().into_scalar::<f64>();
         let correct_pairs = (correct_order * valid_pairs.clone())
             .sum()
-            .into_scalar()
-            .elem::<f64>();
-        let tied_pairs = (ties * valid_pairs).sum().into_scalar().elem::<f64>();
+            .into_scalar::<f64>();
+        let tied_pairs = (ties * valid_pairs).sum().into_scalar::<f64>();
 
         (correct_pairs + 0.5 * tied_pairs) / num_pairs
     }
 }
 
-impl<B: Backend> Metric for AurocMetric<B> {
-    type Input = AurocInput<B>;
+impl Metric for AurocMetric {
+    type Input = AurocInput;
 
-    fn update(&mut self, input: &AurocInput<B>, _metadata: &MetricMetadata) -> SerializedEntry {
+    fn update(&mut self, input: &AurocInput, _metadata: &MetricMetadata) -> SerializedEntry {
         let [batch_size, num_classes] = input.outputs.dims();
 
         assert_eq!(
@@ -114,7 +109,7 @@ impl<B: Backend> Metric for AurocMetric<B> {
     }
 }
 
-impl<B: Backend> Numeric for AurocMetric<B> {
+impl Numeric for AurocMetric {
     fn value(&self) -> super::NumericEntry {
         self.state.current_value()
     }
@@ -127,12 +122,11 @@ impl<B: Backend> Numeric for AurocMetric<B> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::TestBackend;
 
     #[test]
     fn test_auroc() {
         let device = Default::default();
-        let mut metric = AurocMetric::<TestBackend>::new();
+        let mut metric = AurocMetric::new();
 
         let input = AurocInput::new(
             Tensor::from_data(
@@ -154,7 +148,7 @@ mod tests {
     #[test]
     fn test_auroc_perfect_separation() {
         let device = Default::default();
-        let mut metric = AurocMetric::<TestBackend>::new();
+        let mut metric = AurocMetric::new();
 
         let input = AurocInput::new(
             Tensor::from_data([[0.0, 1.0], [1.0, 0.0], [1.0, 0.0], [0.0, 1.0]], &device),
@@ -168,7 +162,7 @@ mod tests {
     #[test]
     fn test_auroc_random() {
         let device = Default::default();
-        let mut metric = AurocMetric::<TestBackend>::new();
+        let mut metric = AurocMetric::new();
 
         let input = AurocInput::new(
             Tensor::from_data(
@@ -190,7 +184,7 @@ mod tests {
     #[test]
     fn test_auroc_all_one_class() {
         let device = Default::default();
-        let mut metric = AurocMetric::<TestBackend>::new();
+        let mut metric = AurocMetric::new();
 
         let input = AurocInput::new(
             Tensor::from_data(
@@ -213,7 +207,7 @@ mod tests {
     #[should_panic(expected = "Currently only binary classification is supported")]
     fn test_auroc_multiclass_error() {
         let device = Default::default();
-        let mut metric = AurocMetric::<TestBackend>::new();
+        let mut metric = AurocMetric::new();
 
         let input = AurocInput::new(
             Tensor::from_data(

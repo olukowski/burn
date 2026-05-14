@@ -6,29 +6,24 @@ use super::{
     confusion_stats::{ConfusionStats, ConfusionStatsInput},
     state::{FormatOptions, NumericMetricState},
 };
-use burn_core::{
-    prelude::{Backend, Tensor},
-    tensor::cast::ToElement,
-};
-use core::marker::PhantomData;
+use burn_core::prelude::Tensor;
 use std::{num::NonZeroUsize, sync::Arc};
 
 /// The Precision Metric
 #[derive(Clone)]
-pub struct PrecisionMetric<B: Backend> {
+pub struct PrecisionMetric {
     name: MetricName,
     state: NumericMetricState,
-    _b: PhantomData<B>,
     config: ClassificationMetricConfig,
 }
 
-impl<B: Backend> Default for PrecisionMetric<B> {
+impl Default for PrecisionMetric {
     fn default() -> Self {
         Self::new(Default::default())
     }
 }
 
-impl<B: Backend> PrecisionMetric<B> {
+impl PrecisionMetric {
     fn new(config: ClassificationMetricConfig) -> Self {
         let state = Default::default();
         let name = Arc::new(format!(
@@ -40,7 +35,6 @@ impl<B: Backend> PrecisionMetric<B> {
             state,
             config,
             name,
-            _b: Default::default(),
         }
     }
     /// Precision metric for binary classification.
@@ -90,18 +84,12 @@ impl<B: Backend> PrecisionMetric<B> {
         }
     }
 
-    fn class_average(&self, mut aggregated_metric: Tensor<B, 1>) -> f64 {
+    fn class_average(&self, mut aggregated_metric: Tensor<1>) -> f64 {
         use ClassReduction::{Macro, Micro};
         let avg_tensor = match self.config.class_reduction {
             Micro => aggregated_metric,
             Macro => {
-                if aggregated_metric
-                    .clone()
-                    .contains_nan()
-                    .any()
-                    .into_scalar()
-                    .to_bool()
-                {
+                if aggregated_metric.clone().contains_nan().any().into_scalar() {
                     let nan_mask = aggregated_metric.clone().is_nan();
                     aggregated_metric = aggregated_metric
                         .clone()
@@ -110,12 +98,12 @@ impl<B: Backend> PrecisionMetric<B> {
                 aggregated_metric.mean()
             }
         };
-        avg_tensor.into_scalar().to_f64()
+        avg_tensor.into_scalar()
     }
 }
 
-impl<B: Backend> Metric for PrecisionMetric<B> {
-    type Input = ConfusionStatsInput<B>;
+impl Metric for PrecisionMetric {
+    type Input = ConfusionStatsInput;
 
     fn update(&mut self, input: &Self::Input, _metadata: &MetricMetadata) -> SerializedEntry {
         let [sample_size, _] = input.predictions.dims();
@@ -148,7 +136,7 @@ impl<B: Backend> Metric for PrecisionMetric<B> {
     }
 }
 
-impl<B: Backend> Numeric for PrecisionMetric<B> {
+impl Numeric for PrecisionMetric {
     fn value(&self) -> NumericEntry {
         self.state.current_value()
     }
@@ -165,10 +153,7 @@ mod tests {
         Metric, MetricMetadata, PrecisionMetric,
     };
     use crate::metric::Numeric;
-    use crate::{
-        TestBackend,
-        tests::{ClassificationType, THRESHOLD, dummy_classification_input},
-    };
+    use crate::tests::{ClassificationType, THRESHOLD, dummy_classification_input};
     use burn_core::tensor::TensorData;
     use burn_core::tensor::Tolerance;
     use rstest::rstest;
@@ -217,15 +202,15 @@ mod tests {
 
     #[test]
     fn test_parameterized_unique_name() {
-        let metric_a = PrecisionMetric::<TestBackend>::multiclass(1, ClassReduction::Macro);
-        let metric_b = PrecisionMetric::<TestBackend>::multiclass(2, ClassReduction::Macro);
-        let metric_c = PrecisionMetric::<TestBackend>::multiclass(1, ClassReduction::Macro);
+        let metric_a = PrecisionMetric::multiclass(1, ClassReduction::Macro);
+        let metric_b = PrecisionMetric::multiclass(2, ClassReduction::Macro);
+        let metric_c = PrecisionMetric::multiclass(1, ClassReduction::Macro);
 
         assert_ne!(metric_a.name(), metric_b.name());
         assert_eq!(metric_a.name(), metric_c.name());
 
-        let metric_a = PrecisionMetric::<TestBackend>::binary(0.5);
-        let metric_b = PrecisionMetric::<TestBackend>::binary(0.75);
+        let metric_a = PrecisionMetric::binary(0.5);
+        let metric_b = PrecisionMetric::binary(0.75);
         assert_ne!(metric_a.name(), metric_b.name());
     }
 }

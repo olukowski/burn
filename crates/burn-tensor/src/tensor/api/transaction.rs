@@ -1,11 +1,8 @@
-use super::{BasicOps, Tensor};
-use crate::{
-    TensorData,
-    backend::{Backend, ExecutionError},
-    ops::TransactionPrimitive,
-};
+use super::Tensor;
+use crate::{ExecutionError, TensorData};
 use alloc::vec::Vec;
-use burn_backend::tensor::TransactionOp;
+use burn_backend::ops::TransactionPrimitive;
+use burn_dispatch::Dispatch;
 
 #[derive(Default)]
 /// A transaction can [read](Self::register) multiple tensors at once with a single operation improving
@@ -22,15 +19,15 @@ use burn_backend::tensor::TransactionOp;
 ///    .try_into()
 ///    .expect("Correct amount of tensor data");
 /// ```
-pub struct Transaction<B: Backend> {
-    op: TransactionPrimitive<B>,
+pub struct Transaction {
+    op: TransactionPrimitive<Dispatch>,
 }
 
-impl<B: Backend> Transaction<B> {
+impl Transaction {
     /// Add a [tensor](Tensor) to the transaction to be read.
-    pub fn register<const D: usize, K: TransactionOp<B> + BasicOps<B>>(
+    pub fn register<const D: usize, K: crate::kind::Transaction>(
         mut self,
-        tensor: Tensor<B, D, K>,
+        tensor: Tensor<D, K>,
     ) -> Self {
         K::register_transaction(&mut self.op, tensor.into_primitive());
         self

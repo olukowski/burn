@@ -17,8 +17,8 @@ use burn::{
 use std::sync::Arc;
 
 // Define inference function
-pub fn infer<B: Backend, D: TextClassificationDataset + 'static>(
-    device: B::Device, // Device on which to perform computation (e.g., CPU or CUDA device)
+pub fn infer<D: TextClassificationDataset + 'static>(
+    device: Device, // Device on which to perform computation (e.g., CPU or CUDA device)
     artifact_dir: &str, // Directory containing model and config files
     samples: Vec<String>, // Text samples for inference
 ) {
@@ -52,7 +52,7 @@ pub fn infer<B: Backend, D: TextClassificationDataset + 'static>(
         tokenizer.vocab_size(),
         config.seq_length,
     )
-    .init::<B>(&device)
+    .init(&device)
     .load_record(record); // Initialize model with loaded weights
 
     // Run inference on the given text samples
@@ -65,8 +65,8 @@ pub fn infer<B: Backend, D: TextClassificationDataset + 'static>(
         #[allow(clippy::single_range_in_vec_init)]
         let prediction = predictions.clone().slice([i..i + 1]); // Get prediction for current sample
         let logits = prediction.to_data(); // Convert prediction tensor to data
-        let class_index = prediction.argmax(1).squeeze_dim::<1>(1).into_scalar(); // Get class index with the highest value
-        let class = D::class_name(class_index.elem::<i32>() as usize); // Get class name
+        let class_index: i32 = prediction.argmax(1).squeeze_dim::<1>(1).into_scalar(); // Get class index with the highest value
+        let class = D::class_name(class_index as usize); // Get class name
 
         // Print sample text, predicted logits and predicted class
         println!(

@@ -31,7 +31,7 @@ std = [
     "burn-cubecl-fusion?/std",
 ]
 doc = ["default"]
-memory-checks = ["burn-fusion?/memory-checks"]
+
 tracing = [
     "dep:tracing",
     "cubecl/tracing",
