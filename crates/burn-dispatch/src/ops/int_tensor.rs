@@ -562,4 +562,8 @@ impl IntTensorOps<Self> for Dispatch {
     fn int_argsort(tensor: IntTensor<Self>, dim: usize, descending: bool) -> IntTensor<Self> {
         unary_op!(tensor, int, |tensor| B::int_argsort(tensor, dim, descending) => Int)
     }
+
+    fn count_ones(tensor: IntTensor<Self>) -> IntTensor<Self> {
+        unary_op!(tensor, int, |tensor| B::count_ones(tensor) => Int)
+    }
 }

@@ -1432,9 +1432,7 @@ pub trait IntTensorOps<B: Backend> {
     /// Counts the number of one bits in each integer element.
     ///
     /// The output tensor uses the unsigned 32-bit integer dtype.
-    fn count_ones(_tensor: IntTensor<B>) -> IntTensor<B> {
-        unimplemented!("count_ones is not implemented for this backend")
-    }
+    fn count_ones(_tensor: IntTensor<B>) -> IntTensor<B>;
 
     /// Bitwise left shift operation for Int Tensors
     fn bitwise_left_shift(lhs: IntTensor<B>, rhs: IntTensor<B>) -> IntTensor<B>;
