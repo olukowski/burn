@@ -141,7 +141,7 @@ impl<const D: usize> Tensor<D, Int> {
     ///
     /// The output tensor uses the unsigned 32-bit integer dtype.
     pub fn count_ones(self) -> Self {
-        Self::new(B::count_ones(self.primitive))
+        Self::new(Dispatch::count_ones(self.primitive))
     }
 
     /// Applies the bitwise logical and operation with each bit in the scalar and the integers in the tensor.
