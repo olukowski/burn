@@ -133,7 +133,12 @@ fn packed_attention_step_kernel<I: Int>(
         }
 
         if selected > I::new(0) && value_ones + value_ones >= selected {
-            packed |= I::new(1) << I::new(comptime![bit as i64]);
+            let mask = comptime![if bit == 31 {
+                i32::MIN as i64
+            } else {
+                1i64 << bit
+            }];
+            packed |= I::new(mask);
         }
     }
 
