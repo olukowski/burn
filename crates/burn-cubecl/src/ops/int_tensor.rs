@@ -100,6 +100,14 @@ where
         matmul(lhs, rhs, None, MatmulStrategy::default(), dtype).unwrap()
     }
 
+    fn int_xnor_popcount_matmul(lhs: IntTensor<Self>, rhs: IntTensor<Self>) -> IntTensor<Self> {
+        kernel::xnor_popcount_matmul(lhs, rhs)
+    }
+
+    fn int_pack_bits(bits: IntTensor<Self>) -> IntTensor<Self> {
+        kernel::pack_bits(bits)
+    }
+
     fn int_mask_where(
         tensor: IntTensor<Self>,
         mask: BoolTensor<Self>,

@@ -210,6 +210,42 @@ impl<B: FusionBackend> IntTensorOps<Self> for Fusion<B> {
             .output()
     }
 
+    fn int_xnor_popcount_matmul(lhs: IntTensor<Self>, rhs: IntTensor<Self>) -> IntTensor<Self> {
+        binary_int_ops!(XnorPopcountMatmulOps, B::int_xnor_popcount_matmul);
+
+        let streams = OperationStreams::with_inputs([&lhs, &rhs]);
+
+        let client = lhs.client.clone();
+        let desc = MatmulOpIr::create(lhs.into_ir(), rhs.into_ir(), || {
+            client.create_empty_handle()
+        });
+
+        client
+            .register(
+                streams,
+                OperationIr::Int(IntOperationIr::XnorPopcountMatmul(desc.clone())),
+                XnorPopcountMatmulOps::<B>::new(desc.into()),
+            )
+            .output()
+    }
+
+    fn int_pack_bits(bits: IntTensor<Self>) -> IntTensor<Self> {
+        unary_int_ops!(PackBitsOps, B::int_pack_bits);
+
+        let streams = OperationStreams::with_inputs([&bits]);
+
+        let client = bits.client.clone();
+        let desc = PackBitsOpIr::create(bits.into_ir(), || client.create_empty_handle());
+
+        client
+            .register(
+                streams,
+                OperationIr::Int(IntOperationIr::PackBits(desc.clone())),
+                PackBitsOps::<B>::new(desc.into()),
+            )
+            .output()
+    }
+
     fn int_mask_where(
         tensor: IntTensor<Self>,
         mask: BoolTensor<Self>,

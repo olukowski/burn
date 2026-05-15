@@ -33,6 +33,10 @@ impl BoolTensorOps<Self> for Dispatch {
         unary_op!(tensor, bool, |tensor| B::bool_into_int(tensor, out_dtype) => Int)
     }
 
+    fn bool_pack_bits(tensor: BoolTensor<Self>, out_dtype: IntDType) -> IntTensor<Self> {
+        unary_op!(tensor, bool, |tensor| B::bool_pack_bits(tensor, out_dtype) => Int)
+    }
+
     fn bool_into_float(tensor: BoolTensor<Self>, out_dtype: FloatDType) -> FloatTensor<Self> {
         unary_op!(tensor, bool, |tensor| B::bool_into_float(tensor, out_dtype) => Float)
     }

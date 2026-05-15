@@ -161,6 +161,18 @@ impl<'a, R: Runtime> OutputPlanner<'a, R> {
                         block_idx,
                     );
                 }
+                OutputKind::Transform(TensorView::PackBits { .. }) => {
+                    self.normal_output(
+                        client,
+                        device,
+                        context,
+                        plan,
+                        output,
+                        tensor_global,
+                        strides,
+                        block_idx,
+                    );
+                }
             }
         }
 
@@ -339,6 +351,7 @@ impl<'a, R: Runtime> OutputPlanner<'a, R> {
         if let Some(transform) = self.resources.views.iter().find(|v| match v {
             TensorView::Reshape { reshaped, .. } => reshaped == &output.tensor_relative.id,
             TensorView::SwapDims { swapped, .. } => swapped == &output.tensor_relative.id,
+            TensorView::PackBits { .. } => false,
         }) {
             return (OutputKind::Transform(transform.clone()), block_idx);
         }

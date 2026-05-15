@@ -8,9 +8,11 @@ mod contiguous;
 mod cross;
 mod index;
 mod mask;
+mod pack_bits;
 mod unary_float;
 mod unary_int;
 mod unary_numeric;
+mod xnor_popcount_matmul;
 
 pub(crate) use binary::*;
 pub(crate) use binary_float::*;
@@ -19,9 +21,11 @@ pub use cast::*;
 pub use contiguous::*;
 pub(crate) use cross::*;
 pub use mask::*;
+pub(crate) use pack_bits::*;
 pub(crate) use unary_float::*;
 pub(crate) use unary_int::*;
 pub(crate) use unary_numeric::*;
+pub(crate) use xnor_popcount_matmul::*;
 
 pub use crate::cubecl::prelude::KernelMetadata;
 

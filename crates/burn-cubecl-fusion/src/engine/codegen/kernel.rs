@@ -240,8 +240,38 @@ fn fuse(
     pos: usize,
     #[comptime] config: &FuseBlockConfig,
 ) {
+    let mut handled = false;
+
+    if comptime![config.ops.len() > 0] {
+        let last = config.ops[comptime![config.ops.len() - 1]].clone();
+        let define!(E) = last.cmp_storage_ty();
+        let size!(N) = config.width;
+
+        match last {
+            FuseOp::PackBits(op) => {
+                terminal_pack_bits::<E, N>(inputs, outputs, locals, pos, op, config);
+                handled = true;
+            }
+            _ => {}
+        }
+    }
+
+    if !handled {
+        fuse_prefix(inputs, outputs, locals, pos, config, config.ops.len());
+    }
+}
+
+#[cube]
+fn fuse_prefix(
+    inputs: &GlobalArgs,
+    outputs: &mut GlobalArgs,
+    locals: &mut LocalArgs,
+    pos: usize,
+    #[comptime] config: &FuseBlockConfig,
+    #[comptime] len: usize,
+) {
     #[unroll]
-    for index in 0..config.ops.len() {
+    for index in 0..len {
         let op = config.ops[index].clone();
         let define!(E) = op.cmp_storage_ty();
         let size!(N) = config.width;
@@ -270,6 +300,10 @@ fn fuse(
                 bitwise_right_shift::<E, N>(inputs, outputs, locals, pos, op, config)
             }
             FuseOp::CountOnes(op) => count_ones::<E, N>(inputs, outputs, locals, pos, op, config),
+            FuseOp::PackBits(op) => pack_bits::<E, N>(inputs, outputs, locals, pos, op, config),
+            FuseOp::XnorPopcountMatmul(op) => {
+                xnor_popcount_matmul::<E, N>(inputs, outputs, locals, pos, op, config)
+            }
             FuseOp::Exp(op) => exp::<E, N>(inputs, outputs, locals, pos, op, config),
             FuseOp::Cos(op) => cos::<E, N>(inputs, outputs, locals, pos, op, config),
             FuseOp::Sin(op) => sin::<E, N>(inputs, outputs, locals, pos, op, config),
@@ -927,4 +961,206 @@ fn count_ones<C: Int, N: Size>(
     let result = input.count_ones();
 
     write::<u32, N>(inputs, outputs, locals, write_pos, result, op.out, config);
+}
+
+#[cube]
+fn pack_bits<C: Int, N: Size>(
+    inputs: &GlobalArgs,
+    outputs: &mut GlobalArgs,
+    locals: &mut LocalArgs,
+    write_pos: usize,
+    #[comptime] op: UnaryFuseArgs,
+    #[comptime] config: &FuseBlockConfig,
+) {
+    let mut result = Vector::<C, N>::empty();
+    let base_pos = write_pos * config.width;
+
+    #[unroll]
+    for lane in 0..config.width {
+        let group = base_pos + lane;
+        let mut packed = C::new(0);
+
+        #[unroll]
+        for bit in 0..32 {
+            let bit_value =
+                read_fused_input_linear::<C, N>(
+                    inputs,
+                    outputs,
+                    locals,
+                    group * 32 + bit,
+                    op.input.clone(),
+                    config,
+                );
+            packed |= bit_value << C::new(comptime![bit as i64]);
+        }
+
+        result[lane] = packed;
+    }
+
+    write::<C, N>(inputs, outputs, locals, write_pos, result, op.out, config);
+}
+
+#[cube]
+fn terminal_pack_bits<C: Int, N: Size>(
+    inputs: &GlobalArgs,
+    outputs: &mut GlobalArgs,
+    locals: &mut LocalArgs,
+    write_pos: usize,
+    #[comptime] op: UnaryFuseArgs,
+    #[comptime] config: &FuseBlockConfig,
+) {
+    let mut result = Vector::<C, N>::empty();
+    let base_pos = write_pos * config.width;
+
+    #[unroll]
+    for lane in 0..config.width {
+        let group = base_pos + lane;
+        let mut packed = C::new(0);
+
+        #[unroll]
+        for bit in 0..32 {
+            let source = group * 32 + bit;
+
+            fuse_prefix(
+                inputs,
+                outputs,
+                locals,
+                source,
+                config,
+                comptime![config.ops.len() - 1],
+            );
+
+            let bit_value = read::<C, N>(inputs, outputs, locals, source, op.input.clone(), config);
+            packed |= bit_value[0] << C::new(comptime![bit as i64]);
+        }
+
+        result[lane] = packed;
+    }
+
+    write::<C, N>(inputs, outputs, locals, write_pos, result, op.out, config);
+}
+
+#[cube]
+fn xnor_popcount_matmul<C: Int, N: Size>(
+    inputs: &GlobalArgs,
+    outputs: &mut GlobalArgs,
+    locals: &mut LocalArgs,
+    write_pos: usize,
+    #[comptime] op: XnorPopcountMatmulFuseArgs,
+    #[comptime] config: &FuseBlockConfig,
+) {
+    let mut result = Vector::<C, N>::empty();
+    let base_pos = write_pos * config.width;
+
+    #[unroll]
+    for lane in 0..config.width {
+        let out_pos = base_pos + lane;
+        let batch = out_pos / op.out_features;
+        let out_feature = out_pos % op.out_features;
+        let mut total = C::new(0);
+
+        for word in 0..op.words {
+            let lhs_value = read_fused_input_linear::<C, N>(
+                inputs,
+                outputs,
+                locals,
+                batch * op.words + word,
+                comptime![op.lhs.clone()],
+                config,
+            );
+            let rhs_value = read_fused_input_linear::<C, N>(
+                inputs,
+                outputs,
+                locals,
+                word * op.out_features + out_feature,
+                comptime![op.rhs.clone()],
+                config,
+            );
+            total += C::cast_from((!(lhs_value ^ rhs_value)).count_ones());
+        }
+
+        result[lane] = total;
+    }
+
+    write::<C, N>(inputs, outputs, locals, write_pos, result, op.out, config);
+}
+
+#[cube]
+fn read_fused_input_linear<C: Int, N: Size>(
+    inputs: &GlobalArgs,
+    outputs: &GlobalArgs,
+    locals: &LocalArgs,
+    index: usize,
+    #[comptime] arg: FuseArg,
+    #[comptime] config: &FuseBlockConfig,
+) -> C {
+    set_polyfill_typed::<Vector<C, N>, DynElem, DynSize>();
+
+    match arg {
+        FuseArg::Input(pos, ..) => {
+            let tensor = inputs.tensors.index(pos);
+            C::cast_from(tensor.tensor[index][0])
+        }
+        FuseArg::Output(pos, ..) => {
+            let tensor = outputs.tensors.index(pos);
+            C::cast_from(tensor.tensor[index][0])
+        }
+        FuseArg::InputReshaped {
+            original, shape, ..
+        } => match comptime![original.as_ref().clone()] {
+            FuseArg::Input(pos, ..) => {
+                let tensor = inputs.tensors.index(pos);
+                let index = reshaped_linear_index_to_original_index(
+                    &tensor.tensor,
+                    index,
+                    comptime![shape.len()],
+                );
+                C::cast_from(tensor.tensor[index][0])
+            }
+            original => {
+                read_fused_input_linear::<C, N>(inputs, outputs, locals, index, original, config)
+            }
+        },
+        FuseArg::InputPackedBits { original } => {
+            let mut packed = C::new(0);
+            let base = index * 32;
+
+            #[unroll]
+            for bit in 0..32 {
+                let bit_value = read_fused_input_linear::<C, N>(
+                    inputs,
+                    outputs,
+                    locals,
+                    base + bit,
+                    comptime![original.as_ref().clone()],
+                    config,
+                );
+                packed |= bit_value << C::new(comptime![bit as i64]);
+            }
+
+            packed
+        }
+        _ => read::<C, N>(inputs, outputs, locals, index, arg, config)[0],
+    }
+}
+
+#[cube]
+fn reshaped_linear_index_to_original_index<C: Scalar, N: Size>(
+    original: &Tensor<Vector<C, N>>,
+    index: usize,
+    #[comptime] rank: usize,
+) -> usize {
+    let mut remaining = index;
+    let mut offset = 0;
+
+    #[unroll]
+    for r in 0..rank {
+        let i = rank - r - 1;
+        let coordinate = remaining % original.shape(i);
+
+        remaining /= original.shape(i);
+        offset += coordinate * original.stride(i);
+    }
+
+    offset / original.vector_size()
 }

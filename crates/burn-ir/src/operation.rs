@@ -702,6 +702,10 @@ pub enum IntOperationIr {
     BitwiseRightShiftScalar(ScalarOpIr),
     /// Operation corresponding to [matmul](burn_backend::ops::IntTensorOps::int_matmul).
     Matmul(MatmulOpIr),
+    /// Operation corresponding to [pack_bits](burn_backend::ops::IntTensorOps::int_pack_bits).
+    PackBits(PackBitsOpIr),
+    /// Operation corresponding to [xnor_popcount_matmul](burn_backend::ops::IntTensorOps::int_xnor_popcount_matmul).
+    XnorPopcountMatmul(MatmulOpIr),
 }
 
 /// Operation intermediate representation specific to a bool tensor.
@@ -711,6 +715,8 @@ pub enum BoolOperationIr {
     IntoFloat(CastOpIr),
     /// Operation corresponding to [into int](burn_backend::ops::BoolTensorOps::bool_into_int).
     IntoInt(CastOpIr),
+    /// Operation corresponding to [pack_bits](burn_backend::ops::BoolTensorOps::bool_pack_bits).
+    PackBits(PackBitsOpIr),
     /// Operation corresponding to [not](burn_backend::ops::BoolTensorOps::bool_not).
     Not(UnaryOpIr),
     /// Operation corresponding to [and](burn_backend::ops::BoolTensorOps::bool_and).
@@ -834,6 +840,13 @@ pub struct BinaryOpIr {
 pub struct MatmulOpIr {
     pub lhs: TensorIr,
     pub rhs: TensorIr,
+    pub out: TensorIr,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Serialize, Deserialize)]
+#[allow(missing_docs)]
+pub struct PackBitsOpIr {
+    pub input: TensorIr,
     pub out: TensorIr,
 }
 
@@ -2633,6 +2646,10 @@ impl IntOperationIr {
     fn inputs(&self) -> Box<dyn Iterator<Item = &TensorIr> + '_> {
         match self {
             IntOperationIr::Matmul(repr) => Box::new([&repr.lhs, &repr.rhs].into_iter()),
+            IntOperationIr::PackBits(repr) => Box::new([&repr.input].into_iter()),
+            IntOperationIr::XnorPopcountMatmul(repr) => {
+                Box::new([&repr.lhs, &repr.rhs].into_iter())
+            }
             IntOperationIr::IntoFloat(repr) => Box::new([&repr.input].into_iter()),
             IntOperationIr::BitwiseAnd(repr) => Box::new([&repr.lhs, &repr.rhs].into_iter()),
             IntOperationIr::BitwiseAndScalar(repr) => Box::new([&repr.lhs].into_iter()),
@@ -2652,6 +2669,8 @@ impl IntOperationIr {
     fn outputs(&self) -> Box<dyn Iterator<Item = &TensorIr> + '_> {
         match self {
             IntOperationIr::Matmul(repr) => Box::new([&repr.out].into_iter()),
+            IntOperationIr::PackBits(repr) => Box::new([&repr.out].into_iter()),
+            IntOperationIr::XnorPopcountMatmul(repr) => Box::new([&repr.out].into_iter()),
             IntOperationIr::IntoFloat(repr) => Box::new([&repr.out].into_iter()),
             IntOperationIr::BitwiseAnd(repr) => Box::new([&repr.out].into_iter()),
             IntOperationIr::BitwiseAndScalar(repr) => Box::new([&repr.out].into_iter()),
@@ -2673,6 +2692,13 @@ impl IntOperationIr {
 
         match self {
             IntOperationIr::Matmul(repr) => {
+                repr.lhs.mark_read_only(nodes, &mut output);
+                repr.rhs.mark_read_only(nodes, &mut output);
+            }
+            IntOperationIr::PackBits(repr) => {
+                repr.input.mark_read_only(nodes, &mut output);
+            }
+            IntOperationIr::XnorPopcountMatmul(repr) => {
                 repr.lhs.mark_read_only(nodes, &mut output);
                 repr.rhs.mark_read_only(nodes, &mut output);
             }
@@ -2731,6 +2757,7 @@ impl BoolOperationIr {
         match self {
             BoolOperationIr::IntoFloat(repr) => Box::new([&repr.input].into_iter()),
             BoolOperationIr::IntoInt(repr) => Box::new([&repr.input].into_iter()),
+            BoolOperationIr::PackBits(repr) => Box::new([&repr.input].into_iter()),
             BoolOperationIr::Not(repr) => Box::new([&repr.input].into_iter()),
             BoolOperationIr::And(repr) => Box::new([&repr.lhs, &repr.rhs].into_iter()),
             BoolOperationIr::Or(repr) => Box::new([&repr.lhs, &repr.rhs].into_iter()),
@@ -2740,6 +2767,7 @@ impl BoolOperationIr {
         match self {
             BoolOperationIr::IntoFloat(repr) => Box::new([&repr.out].into_iter()),
             BoolOperationIr::IntoInt(repr) => Box::new([&repr.out].into_iter()),
+            BoolOperationIr::PackBits(repr) => Box::new([&repr.out].into_iter()),
             BoolOperationIr::Not(repr) => Box::new([&repr.out].into_iter()),
             BoolOperationIr::And(repr) => Box::new([&repr.out].into_iter()),
             BoolOperationIr::Or(repr) => Box::new([&repr.out].into_iter()),
@@ -2753,6 +2781,9 @@ impl BoolOperationIr {
                 repr.input.mark_read_only(nodes, &mut output);
             }
             BoolOperationIr::IntoInt(repr) => {
+                repr.input.mark_read_only(nodes, &mut output);
+            }
+            BoolOperationIr::PackBits(repr) => {
                 repr.input.mark_read_only(nodes, &mut output);
             }
             BoolOperationIr::Not(repr) => {

@@ -152,6 +152,9 @@ pub fn read<C: Scalar, N: Size>(
             }
             _ => comptime![panic!("Only input can be swapped dims")],
         },
+        FuseArg::InputPackedBits { .. } => {
+            comptime![panic!("Packed-bit inputs require custom indexed reads")]
+        }
     }
 }
 

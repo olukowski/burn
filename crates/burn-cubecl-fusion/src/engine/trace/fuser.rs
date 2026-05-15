@@ -3,10 +3,10 @@ use super::{
         codegen::ir::{FuseArg, FuseOp, FuseType, LayoutInfo},
         settings::FuseSettings,
     },
-    FuseResources,
     block::FuseBlockBuilder,
+    FuseResources,
 };
-use super::{FuseTrace, RegisteredTensors};
+use super::{FuseTrace, RegisteredTensors, TensorView};
 use crate::engine::trace::block::QuantInput;
 use burn_fusion::stream::ScalarId;
 use burn_ir::{ScalarIr, TensorIr};
@@ -166,6 +166,78 @@ impl TraceFuser {
 
         self.resources.inputs_unhandled.push(tensor.id);
         arg
+    }
+
+    /// Register an input tensor that won't be automatically read into a local variable,
+    /// preserving virtual input views when the tensor is the output of a reshape.
+    pub fn input_unhandled_view(&mut self, tensor: &TensorIr) -> FuseArg {
+        if let Some(original_tensor) = self.resources.views.iter().find_map(|view| match view {
+            TensorView::PackBits { packed, original } if *packed == tensor.id => {
+                Some(original.clone())
+            }
+            _ => None,
+        }) {
+            let original = self.input_unhandled_view(&original_tensor);
+
+            return FuseArg::InputPackedBits {
+                original: Box::new(original),
+            };
+        }
+
+        let view = self.resources.views.iter().find_map(|view| match view {
+            super::TensorView::Reshape {
+                reshaped,
+                original,
+                reshape_pos,
+                shape_relative,
+            } if *reshaped == tensor.id => Some((*original, *reshape_pos, shape_relative.rank())),
+            _ => None,
+        });
+
+        let Some((original_id, reshape_pos, rank)) = view else {
+            return self.input_unhandled(tensor);
+        };
+
+        if self.resources.indexed.contains_key(&tensor.id)
+            || self.resources.indexed.contains_key(&original_id)
+        {
+            panic!("Can't add a new input that is already used in an index operation");
+        }
+
+        let original_tensor = self
+            .tensor_by_id(original_id)
+            .unwrap_or_else(|| panic!("Reshaped XNOR-popcount input must have an original tensor"));
+
+        let original = self.input_unhandled_view(&original_tensor);
+        let mut shape = Vec::with_capacity(rank);
+
+        for i in 0..rank {
+            let id = reshape_pos * rank + i;
+            shape.push(FuseArg::ScalarShape(id));
+        }
+
+        self.resources.inputs_unhandled.push(original_id);
+
+        FuseArg::InputReshaped {
+            original: Box::new(original),
+            shape,
+            broadcasted: tensor.shape[rank - 1] == 0,
+        }
+    }
+
+    fn tensor_by_id(&self, tensor_id: burn_ir::TensorId) -> Option<TensorIr> {
+        self.resources
+            .inputs
+            .get(tensor_id)
+            .or_else(|| self.resources.outputs.get(tensor_id))
+            .map(|(tensor, _)| tensor.clone())
+    }
+
+    pub fn pack_bits_view(&mut self, packed: &TensorIr, original: &TensorIr) {
+        self.resources.views.push(TensorView::PackBits {
+            packed: packed.id,
+            original: original.clone(),
+        });
     }
 
     /// Register an input tensor.

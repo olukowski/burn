@@ -144,6 +144,23 @@ impl<const D: usize> Tensor<D, Int> {
         Self::new(Dispatch::count_ones(self.primitive))
     }
 
+    /// Packs each row of 32 binary integer values into a single 32-bit word.
+    ///
+    /// Shape is `[..., 32] -> [...]`.
+    pub fn pack_bits<const D2: usize>(self) -> Tensor<D2, Int> {
+        Tensor::new(Dispatch::int_pack_bits(self.primitive))
+    }
+
+    /// Applies XNOR-popcount matrix multiplication to packed binary tensors.
+    ///
+    /// Shapes are `[batch, words] @ [words, out_features] -> [batch, out_features]`.
+    pub fn xnor_popcount_matmul(self, other: Self) -> Self {
+        Self::new(Dispatch::int_xnor_popcount_matmul(
+            self.primitive,
+            other.primitive,
+        ))
+    }
+
     /// Applies the bitwise logical and operation with each bit in the scalar and the integers in the tensor.
     pub fn bitwise_and_scalar(self, other: impl ElementConversion) -> Self {
         let other = Scalar::new(other, &self.dtype());

@@ -243,6 +243,14 @@ impl IntTensorOps<Self> for Dispatch {
         binary_op!((lhs, int), (rhs, int), |lhs, rhs| B::int_matmul(lhs, rhs) => Int)
     }
 
+    fn int_xnor_popcount_matmul(lhs: IntTensor<Self>, rhs: IntTensor<Self>) -> IntTensor<Self> {
+        binary_op!((lhs, int), (rhs, int), |lhs, rhs| B::int_xnor_popcount_matmul(lhs, rhs) => Int)
+    }
+
+    fn int_pack_bits(bits: IntTensor<Self>) -> IntTensor<Self> {
+        unary_op!(bits, int, |bits| B::int_pack_bits(bits) => Int)
+    }
+
     fn int_sum(tensor: IntTensor<Self>) -> IntTensor<Self> {
         unary_op!(tensor, int, |tensor| B::int_sum(tensor) => Int)
     }

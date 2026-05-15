@@ -97,6 +97,50 @@ impl From<MatmulOpIr> for BinaryOpIr {
     }
 }
 
+impl PackBitsOpIr {
+    pub fn create(input: TensorIr, new_id: impl FnOnce() -> TensorId) -> Self {
+        let rank = input.shape.rank();
+        assert!(rank >= 2, "pack_bits input rank must be at least 2");
+        assert_eq!(input.shape[rank - 1], 32, "pack_bits input last dimension must be 32");
+
+        let out_shape = input
+            .shape
+            .iter()
+            .copied()
+            .take(rank - 1)
+            .collect::<Shape>();
+        let out = TensorIr::uninit(new_id(), out_shape, input.dtype);
+        PackBitsOpIr { input, out }
+    }
+
+    pub fn create_chunked(
+        input: TensorIr,
+        out_dtype: DType,
+        new_id: impl FnOnce() -> TensorId,
+    ) -> Self {
+        let rank = input.shape.rank();
+        assert!(rank >= 1, "pack_bits input rank must be at least 1");
+        assert!(
+            input.shape[rank - 1].is_multiple_of(32),
+            "pack_bits input last dimension must be a multiple of 32"
+        );
+
+        let mut out_shape = input.shape.clone();
+        out_shape[rank - 1] /= 32;
+        let out = TensorIr::uninit(new_id(), out_shape, out_dtype);
+        PackBitsOpIr { input, out }
+    }
+}
+
+impl From<PackBitsOpIr> for UnaryOpIr {
+    fn from(value: PackBitsOpIr) -> Self {
+        Self {
+            input: value.input,
+            out: value.out,
+        }
+    }
+}
+
 impl From<ReduceOpIr> for UnaryOpIr {
     fn from(value: ReduceOpIr) -> Self {
         Self {

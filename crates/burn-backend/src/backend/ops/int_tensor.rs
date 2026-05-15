@@ -2,8 +2,8 @@ use super::cat::cat_with_slice_assign;
 use super::repeat_dim::repeat_with_slice_assign;
 use super::sort::{argsort, sort, sort_with_indices};
 use crate::tensor::{BoolTensor, Device, FloatTensor, IntElem, IntTensor};
-use crate::{Backend, Distribution, TensorData, TensorMetadata, element::ElementConversion};
-use crate::{ExecutionError, Scalar, get_device_settings};
+use crate::{element::ElementConversion, Backend, Distribution, TensorData, TensorMetadata};
+use crate::{get_device_settings, ExecutionError, Scalar};
 use alloc::vec::Vec;
 use burn_std::reader::try_read_sync;
 use burn_std::{BoolDType, FloatDType, IntDType, Shape, Slice};
@@ -443,7 +443,7 @@ pub trait IntTensorOps<B: Backend> {
     ///
     /// The boolean tensor with the result of the comparison.
     fn int_lower_equal(lhs: IntTensor<B>, rhs: IntTensor<B>, out_dtype: BoolDType)
-    -> BoolTensor<B>;
+        -> BoolTensor<B>;
 
     /// Element-wise less than or equal comparison with a scalar.
     ///
@@ -718,6 +718,110 @@ pub trait IntTensorOps<B: Backend> {
     ///
     /// The result of multiplying the two tensors together using matrix multiplication.
     fn int_matmul(lhs: IntTensor<B>, rhs: IntTensor<B>) -> IntTensor<B>;
+
+    /// XNOR-popcount matrix multiplication for packed binary tensors.
+    ///
+    /// Shapes are `[batch, words] @ [words, out_features] -> [batch, out_features]`.
+    /// Each output element is the sum of `count_ones(!(lhs ^ rhs))` over packed words.
+    fn int_xnor_popcount_matmul(lhs: IntTensor<B>, rhs: IntTensor<B>) -> IntTensor<B> {
+        let lhs_shape = lhs.shape();
+        let rhs_shape = rhs.shape();
+
+        assert_eq!(lhs_shape.num_dims(), 2);
+        assert_eq!(rhs_shape.num_dims(), 2);
+
+        let lhs_dims = lhs_shape.dims::<2>();
+        let rhs_dims = rhs_shape.dims::<2>();
+        let batch_size = lhs_dims[0];
+        let words = lhs_dims[1];
+        let out_features = rhs_dims[1];
+        let output_dtype = lhs.dtype();
+
+        assert_eq!(words, rhs_dims[0]);
+
+        let mut output = None;
+
+        for word in 0..words {
+            let lhs_word = Self::int_slice(
+                lhs.clone(),
+                &[
+                    Slice {
+                        start: 0,
+                        end: Some(batch_size as isize),
+                        step: 1,
+                    },
+                    Slice {
+                        start: word as isize,
+                        end: Some(word as isize + 1),
+                        step: 1,
+                    },
+                ],
+            );
+            let rhs_word = Self::int_slice(
+                rhs.clone(),
+                &[
+                    Slice {
+                        start: word as isize,
+                        end: Some(word as isize + 1),
+                        step: 1,
+                    },
+                    Slice {
+                        start: 0,
+                        end: Some(out_features as isize),
+                        step: 1,
+                    },
+                ],
+            );
+
+            let matches = Self::int_cast(
+                Self::count_ones(Self::bitwise_not(Self::bitwise_xor(lhs_word, rhs_word))),
+                output_dtype.into(),
+            );
+
+            output = Some(match output {
+                Some(output) => Self::int_add(output, matches),
+                None => matches,
+            });
+        }
+
+        output.unwrap_or_else(|| {
+            let device = Self::int_device(&lhs);
+            Self::int_zeros(
+                Shape::from([batch_size, out_features]),
+                &device,
+                output_dtype.into(),
+            )
+        })
+    }
+
+    /// Packs each `[32]` row of a binary int tensor into a single 32-bit word.
+    ///
+    /// Shape is `[..., 32] -> [...]`. Input values are expected to be 0 or 1.
+    fn int_pack_bits(bits: IntTensor<B>) -> IntTensor<B> {
+        let shape = bits.shape();
+        let rank = shape.num_dims();
+        assert!(rank >= 2, "pack_bits input rank must be at least 2");
+        assert_eq!(
+            shape[rank - 1],
+            32,
+            "pack_bits input last dimension must be 32"
+        );
+
+        let device = B::int_device(&bits);
+        let dtype = bits.dtype();
+        let mut shifts_shape = vec![1; rank];
+        shifts_shape[rank - 1] = 32;
+        let shifts = B::int_reshape(
+            B::int_arange(0..32, &device, dtype.into()),
+            Shape::from(shifts_shape),
+        );
+
+        let out_shape = shape.iter().copied().take(rank - 1).collect::<Shape>();
+        B::int_reshape(
+            B::int_sum_dim(B::bitwise_left_shift(bits, shifts), rank - 1),
+            out_shape,
+        )
+    }
 
     /// Element-wise negation.
     ///

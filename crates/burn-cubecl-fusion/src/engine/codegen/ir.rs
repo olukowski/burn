@@ -1,9 +1,9 @@
 use super::tensor::GlobalTensor;
 use crate::engine::codegen::{DynElem, DynSize};
 use burn_std::{
-    BoolStore, DType, Shape, Strides, bf16, f16,
+    bf16, f16,
     quantization::{QuantScheme, QuantStore, QuantValue},
-    strides,
+    strides, BoolStore, DType, Shape, Strides,
 };
 use core::fmt::Display;
 use cubecl::{
@@ -53,6 +53,8 @@ pub enum FuseArg {
         dims: (usize, usize),
         broadcasted: bool,
     },
+    /// A readonly input tensor whose rows of 32 bits are packed on demand.
+    InputPackedBits { original: Box<FuseArg> },
 }
 
 /// Metadata of a variable shared between blocks.
@@ -90,6 +92,7 @@ impl FuseArg {
             FuseArg::ScalarShape(_) => return FuseType::U32,
             FuseArg::InputReshaped { original, .. } => return original.precision(),
             FuseArg::InputSwapDims { original, .. } => return original.precision(),
+            FuseArg::InputPackedBits { original } => return original.precision(),
         }
     }
 }
@@ -139,6 +142,8 @@ pub enum FuseOp {
     BitwiseLeftShift(BinaryFuseArgs),
     BitwiseRightShift(BinaryFuseArgs),
     CountOnes(UnaryFuseArgs),
+    PackBits(UnaryFuseArgs),
+    XnorPopcountMatmul(XnorPopcountMatmulFuseArgs),
     Equal(BinaryFuseArgs),
     Lower(BinaryFuseArgs),
     Greater(BinaryFuseArgs),
@@ -207,6 +212,12 @@ impl Display for FuseOp {
                 write!(f, "{} = {} >> {}", args.out, args.lhs, args.rhs)
             }
             FuseOp::CountOnes(args) => write!(f, "{} = count_ones({})", args.out, args.input),
+            FuseOp::PackBits(args) => write!(f, "{} = pack_bits({})", args.out, args.input),
+            FuseOp::XnorPopcountMatmul(args) => write!(
+                f,
+                "{} = xnor_popcount_matmul({}, {})",
+                args.out, args.lhs, args.rhs
+            ),
             FuseOp::Equal(args) => write!(f, "{} = {} == {}", args.out, args.lhs, args.rhs),
             FuseOp::Lower(args) => write!(f, "{} = {} < {}", args.out, args.lhs, args.rhs),
             FuseOp::Greater(args) => write!(f, "{} = {} > {}", args.out, args.lhs, args.rhs),
@@ -298,6 +309,8 @@ impl FuseOp {
             FuseOp::BitwiseLeftShift(op) => op.lhs.precision().into_elem(),
             FuseOp::BitwiseRightShift(op) => op.lhs.precision().into_elem(),
             FuseOp::CountOnes(op) => op.input.precision().into_elem(),
+            FuseOp::PackBits(op) => op.out.precision().into_elem(),
+            FuseOp::XnorPopcountMatmul(op) => op.out.precision().into_elem(),
             FuseOp::Equal(op) => op.lhs.precision().into_elem(),
             FuseOp::Lower(op) => op.lhs.precision().into_elem(),
             FuseOp::Greater(op) => op.lhs.precision().into_elem(),
@@ -593,6 +606,18 @@ pub struct BinaryFuseArgs {
     pub out: FuseArg,
 }
 
+#[derive(CubeType, Clone, Debug, Hash, PartialEq, Eq, Serialize, Deserialize)]
+/// XNOR-popcount matrix multiplication operation arguments.
+pub struct XnorPopcountMatmulFuseArgs {
+    pub lhs: FuseArg,
+    pub rhs: FuseArg,
+    pub out: FuseArg,
+    #[cube(comptime)]
+    pub words: usize,
+    #[cube(comptime)]
+    pub out_features: usize,
+}
+
 #[derive(
     CubeType, Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize,
 )]
@@ -682,9 +707,15 @@ impl FuseOp {
             | FuseOp::Recip(unary_fuse_args)
             | FuseOp::BitwiseNot(unary_fuse_args)
             | FuseOp::CountOnes(unary_fuse_args)
+            | FuseOp::PackBits(unary_fuse_args)
             | FuseOp::Assign(unary_fuse_args) => {
                 unary_fuse_args.input.multi_block_variable(registers);
                 unary_fuse_args.out.multi_block_variable(registers);
+            }
+            FuseOp::XnorPopcountMatmul(args) => {
+                args.lhs.multi_block_variable(registers);
+                args.rhs.multi_block_variable(registers);
+                args.out.multi_block_variable(registers);
             }
             FuseOp::Clamp {
                 input,
@@ -928,6 +959,7 @@ impl Display for FuseArg {
             FuseArg::Literal(val, ..) => write!(f, "literal_{val}"),
             FuseArg::InputReshaped { original, .. } => write!(f, "input_reshaped_{original}"),
             FuseArg::InputSwapDims { original, .. } => write!(f, "input_swap_dims_{original}"),
+            FuseArg::InputPackedBits { original } => write!(f, "input_pack_bits_{original}"),
         }
     }
 }

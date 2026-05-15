@@ -743,6 +743,10 @@ impl RelativeOps for BoolOperationIr {
                 input: desc.input.to_relative(converter),
                 out: desc.out.to_relative(converter),
             }),
+            BoolOperationIr::PackBits(desc) => BoolOperationIr::PackBits(PackBitsOpIr {
+                input: desc.input.to_relative(converter),
+                out: desc.out.to_relative(converter),
+            }),
             BoolOperationIr::Not(desc) => BoolOperationIr::Not(UnaryOpIr {
                 input: desc.input.to_relative(converter),
                 out: desc.out.to_relative(converter),
@@ -773,6 +777,17 @@ impl RelativeOps for IntOperationIr {
                 rhs: desc.rhs.to_relative(converter),
                 out: desc.out.to_relative(converter),
             }),
+            IntOperationIr::PackBits(desc) => IntOperationIr::PackBits(PackBitsOpIr {
+                input: desc.input.to_relative(converter),
+                out: desc.out.to_relative(converter),
+            }),
+            IntOperationIr::XnorPopcountMatmul(desc) => {
+                IntOperationIr::XnorPopcountMatmul(MatmulOpIr {
+                    lhs: desc.lhs.to_relative(converter),
+                    rhs: desc.rhs.to_relative(converter),
+                    out: desc.out.to_relative(converter),
+                })
+            }
             IntOperationIr::BitwiseAnd(desc) => IntOperationIr::BitwiseAnd(BinaryOpIr {
                 lhs: desc.lhs.to_relative(converter),
                 rhs: desc.rhs.to_relative(converter),

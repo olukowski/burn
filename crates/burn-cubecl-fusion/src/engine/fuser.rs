@@ -1,7 +1,7 @@
 use super::{
-    codegen::ir::{BinaryFuseArgs, FuseArg, FuseOp, UnaryFuseArgs},
-    settings::FuseSettings,
-    trace::{FuseTrace, TraceFuser, block::QuantInput},
+    codegen::ir::{BinaryFuseArgs, FuseArg, FuseOp, UnaryFuseArgs, XnorPopcountMatmulFuseArgs},
+    settings::{FuseSettings, VectorizationSetting},
+    trace::{block::QuantInput, FuseTrace, TraceFuser},
 };
 use crate::engine::{codegen::ir::QuantSchemeFuse, scoring::Scoring};
 use burn_fusion::{FuserProperties, FuserStatus, OperationFuser};
@@ -10,8 +10,8 @@ use burn_ir::{
     NumericOperationIr, OperationIr, ScalarOpIr, TensorIr, UnaryOpIr,
 };
 use burn_std::{
-    DType, Shape,
     config::{fusion::FusionLogLevel, log_fusion},
+    DType, Shape,
 };
 use cubecl::ir::ElemType;
 
@@ -128,6 +128,18 @@ impl OperationFuser<FuseTrace> for TraceOperationFuser {
                 }
             }
             OperationIr::Int(ops) => {
+                if let IntOperationIr::PackBits(_) = ops {
+                    if !self.fuse_int(ops) {
+                        self.status = FuserStatus::Closed;
+                        self.log_closed(op, prev_num_ops, "int fuse rejected");
+                    } else {
+                        self.status = FuserStatus::Closed;
+                        self.scoring.register(op);
+                        self.num_ops += 1;
+                    }
+                    return;
+                }
+
                 if !self.fuse_int(ops) {
                     self.status = FuserStatus::Closed;
                     self.log_closed(op, prev_num_ops, "int fuse rejected");
@@ -142,6 +154,21 @@ impl OperationFuser<FuseTrace> for TraceOperationFuser {
                 }
             }
             OperationIr::Bool(ops) => {
+                if let BoolOperationIr::PackBits(_) = ops {
+                if !self.fuse_bool(ops) {
+                    self.status = FuserStatus::Closed;
+                    self.log_closed(op, prev_num_ops, "bool fuse rejected");
+                } else {
+                    self.status = match prev_num_ops {
+                        0 => FuserStatus::Open,
+                        _ => FuserStatus::Closed,
+                    };
+                    self.scoring.register(op);
+                    self.num_ops += 1;
+                }
+                    return;
+                }
+
                 if !self.fuse_bool(ops) {
                     self.status = FuserStatus::Closed;
                     self.log_closed(op, prev_num_ops, "bool fuse rejected");
@@ -670,6 +697,43 @@ impl TraceOperationFuser {
             IntOperationIr::CountOnes(desc) => self.fuse_unary_ops(desc, |input, out| {
                 FuseOp::CountOnes(UnaryFuseArgs { input, out })
             }),
+            IntOperationIr::PackBits(desc) => {
+                self.current_output_shape.clone_from(&desc.out.shape);
+
+                self.fuser.fuse(|build| {
+                    let input = build.input_unhandled_view(&desc.input);
+                    let out = build.output(&desc.out)?;
+                    build.fuse_operation(FuseOp::PackBits(UnaryFuseArgs { input, out }));
+
+                    Some(())
+                })
+            }
+            IntOperationIr::XnorPopcountMatmul(desc) => {
+                self.current_output_shape.clone_from(&desc.out.shape);
+
+                if self.num_ops == 0 {
+                    self.settings.vectorization = VectorizationSetting::Deactivated;
+                    self.fuser = TryTraceFuser::new(self.max_bindings, self.settings);
+                }
+
+                self.fuser.fuse(|build| {
+                    let lhs = build.input_unhandled_view(&desc.lhs);
+                    let rhs = build.input_unhandled_view(&desc.rhs);
+                    let out = build.output(&desc.out)?;
+                    let lhs_dims = desc.lhs.shape.dims::<2>();
+                    let rhs_dims = desc.rhs.shape.dims::<2>();
+
+                    build.fuse_operation(FuseOp::XnorPopcountMatmul(XnorPopcountMatmulFuseArgs {
+                        lhs,
+                        rhs,
+                        out,
+                        words: lhs_dims[1],
+                        out_features: rhs_dims[1],
+                    }));
+
+                    Some(())
+                })
+            }
             IntOperationIr::BitwiseLeftShift(desc) => self
                 .fuse_binary_ops(desc, |lhs, rhs, out| {
                     FuseOp::BitwiseLeftShift(BinaryFuseArgs { lhs, rhs, out })
@@ -697,6 +761,18 @@ impl TraceOperationFuser {
                     FuseOp::Assign(UnaryFuseArgs { input, out })
                 })
             }
+            BoolOperationIr::PackBits(desc) => self.fuser.fuse(|build| {
+                if self.num_ops == 0 {
+                    build.pack_bits_view(&desc.out, &desc.input);
+                } else {
+                    self.current_output_shape.clone_from(&desc.out.shape);
+                    let input = build.input(&desc.input)?;
+                    let out = build.output(&desc.out)?;
+                    build.fuse_operation(FuseOp::PackBits(UnaryFuseArgs { input, out }));
+                }
+
+                Some(())
+            }),
             _ => false,
         }
     }

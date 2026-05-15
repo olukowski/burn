@@ -67,6 +67,14 @@ impl<const D: usize> Tensor<D, Bool> {
         Tensor::new(Dispatch::bool_into_int(self.primitive, out_dtype))
     }
 
+    /// Packs bool values along the last dimension into 32-bit integer words.
+    ///
+    /// Shape is `[..., features] -> [..., features / 32]`.
+    pub fn pack_bits(self) -> Tensor<D, Int> {
+        let out_dtype = self.device().settings().int_dtype;
+        Tensor::new(Dispatch::bool_pack_bits(self.primitive, out_dtype))
+    }
+
     /// Convert the bool tensor into a float tensor.
     ///
     /// # Returns

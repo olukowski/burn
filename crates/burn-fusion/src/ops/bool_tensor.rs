@@ -12,9 +12,9 @@ use burn_backend::{
 use burn_ir::{
     BaseOperationIr, BinaryOpIr, BoolOperationIr, CastOpIr, CatOpIr, CreationOpIr, FlipOpIr,
     GatherOpIr, HandleContainer, InitOperationIr, MaskFillOpIr, MaskWhereOpIr, OperationIr,
-    OperationOutput, PermuteOpIr, RepeatDimOpIr, ScalarOpIr, ScatterOpIr, SelectAssignOpIr,
-    SelectOpIr, ShapeOpIr, SliceAssignOpIr, SliceOpIr, SwapDimsOpIr, TensorIr, UnaryOpIr,
-    UnfoldOpIr,
+    OperationOutput, PackBitsOpIr, PermuteOpIr, RepeatDimOpIr, ScalarOpIr, ScatterOpIr,
+    SelectAssignOpIr, SelectOpIr, ShapeOpIr, SliceAssignOpIr, SliceOpIr, SwapDimsOpIr, TensorIr,
+    UnaryOpIr, UnfoldOpIr,
 };
 use std::marker::PhantomData;
 
@@ -160,6 +160,38 @@ impl<B: FusionBackend> BoolTensorOps<Self> for Fusion<B> {
                 streams,
                 OperationIr::Bool(BoolOperationIr::IntoInt(desc.clone())),
                 IntoIntOps::<B>::new(desc),
+            )
+            .output()
+    }
+
+    fn bool_pack_bits(tensor: BoolTensor<Self>, out_dtype: IntDType) -> IntTensor<Self> {
+        #[derive(new, Debug)]
+        struct PackBitsOps<B: FusionBackend> {
+            desc: PackBitsOpIr,
+            out_dtype: IntDType,
+            _b: PhantomData<B>,
+        }
+
+        impl<B: FusionBackend> Operation<B::FusionRuntime> for PackBitsOps<B> {
+            fn execute(&self, handles: &mut HandleContainer<B::Handle>) {
+                let input = handles.get_bool_tensor::<B>(&self.desc.input);
+                let output = B::bool_pack_bits(input, self.out_dtype);
+                handles.register_int_tensor::<B>(&self.desc.out.id, output);
+            }
+        }
+
+        let streams = OperationStreams::with_inputs([&tensor]);
+
+        let client = tensor.client.clone();
+        let desc = PackBitsOpIr::create_chunked(tensor.into_ir(), out_dtype.into(), || {
+            client.create_empty_handle()
+        });
+
+        client
+            .register(
+                streams,
+                OperationIr::Bool(BoolOperationIr::PackBits(desc.clone())),
+                PackBitsOps::<B>::new(desc, out_dtype),
             )
             .output()
     }

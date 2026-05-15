@@ -219,6 +219,10 @@ pub enum TensorView {
         reshape_pos: usize,
         shape_relative: Shape,
     },
+    PackBits {
+        packed: TensorId,
+        original: TensorIr,
+    },
     SwapDims {
         swapped: TensorId,
         original: TensorId,

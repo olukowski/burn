@@ -240,6 +240,7 @@ impl<'a, R: Runtime> InputPlanner<'a, R> {
                     return true;
                 }
             }
+            TensorView::PackBits { .. } => {}
         };
 
         false

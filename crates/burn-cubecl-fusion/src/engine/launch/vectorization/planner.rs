@@ -63,7 +63,7 @@ impl<'a, R: Runtime> VectorizationPlanner<'a, R> {
                 context.tensors.get(original).unwrap(),
                 has_multiple_read(original),
             )),
-            TensorView::SwapDims { .. } => None,
+            TensorView::SwapDims { .. } | TensorView::PackBits { .. } => None,
         });
         let tensors_swapped = self.resources.views.iter().filter_map(|view| match view {
             TensorView::SwapDims {
@@ -77,7 +77,7 @@ impl<'a, R: Runtime> VectorizationPlanner<'a, R> {
                 has_multiple_read(original),
                 dims,
             )),
-            TensorView::Reshape { .. } => None,
+            TensorView::Reshape { .. } | TensorView::PackBits { .. } => None,
         });
 
         let mut ref_elem = (ElemType::UInt(UIntKind::U64).into(), 8);

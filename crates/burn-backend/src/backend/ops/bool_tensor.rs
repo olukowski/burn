@@ -89,6 +89,27 @@ pub trait BoolTensorOps<B: Backend> {
     /// The int tensor with the same data as the bool tensor.
     fn bool_into_int(tensor: BoolTensor<B>, out_dtype: IntDType) -> IntTensor<B>;
 
+    /// Packs binary bool values along the last dimension into 32-bit words.
+    ///
+    /// Shape is `[..., features] -> [..., features / 32]`.
+    fn bool_pack_bits(tensor: BoolTensor<B>, out_dtype: IntDType) -> IntTensor<B> {
+        let shape = tensor.shape();
+        let rank = shape.num_dims();
+        assert!(rank >= 1, "pack_bits input rank must be at least 1");
+        assert!(
+            shape[rank - 1].is_multiple_of(32),
+            "pack_bits input last dimension must be a multiple of 32"
+        );
+
+        let mut grouped_shape = shape.iter().copied().collect::<Vec<_>>();
+        let features = grouped_shape.pop().unwrap();
+        grouped_shape.push(features / 32);
+        grouped_shape.push(32);
+
+        let bits = B::int_reshape(B::bool_into_int(tensor, out_dtype), Shape::from(grouped_shape));
+        B::int_pack_bits(bits)
+    }
+
     /// Converts bool tensor to float tensor.
     ///
     /// # Arguments
