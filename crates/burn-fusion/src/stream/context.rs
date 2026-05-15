@@ -788,6 +788,15 @@ impl RelativeOps for IntOperationIr {
                     out: desc.out.to_relative(converter),
                 })
             }
+            IntOperationIr::PackedAttentionStep(desc) => {
+                IntOperationIr::PackedAttentionStep(PackedAttentionStepOpIr {
+                    query: desc.query.to_relative(converter),
+                    keys: desc.keys.to_relative(converter),
+                    values: desc.values.to_relative(converter),
+                    threshold: desc.threshold,
+                    out: desc.out.to_relative(converter),
+                })
+            }
             IntOperationIr::BitwiseAnd(desc) => IntOperationIr::BitwiseAnd(BinaryOpIr {
                 lhs: desc.lhs.to_relative(converter),
                 rhs: desc.rhs.to_relative(converter),

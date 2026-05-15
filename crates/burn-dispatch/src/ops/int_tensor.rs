@@ -8,6 +8,63 @@ use burn_backend::{
 use crate::backends::*;
 use crate::{Dispatch, DispatchDevice};
 
+macro_rules! ternary_int_op_arms {
+    (
+        ($a:expr, $a_kind:ident),
+        ($b:expr, $b_kind:ident),
+        ($c:expr, $c_kind:ident),
+        |$a_inner:ident, $b_inner:ident, $c_inner:ident| $body:expr;
+        $([$Backend:ident, $cfg:meta]),*
+    ) => {{
+        #[cfg(feature = "autodiff")]
+        let checkpointing = crate::validate_checkpointing(
+            crate::validate_checkpointing($a.checkpointing, $b.checkpointing),
+            $c.checkpointing,
+        );
+        #[cfg(not(feature = "autodiff"))]
+        let checkpointing = $a.checkpointing;
+
+        match ($a.kind, $b.kind, $c.kind) {
+            $(
+                #[cfg($cfg)]
+                (
+                    crate::DispatchTensorKind::$Backend($a_inner),
+                    crate::DispatchTensorKind::$Backend($b_inner),
+                    crate::DispatchTensorKind::$Backend($c_inner),
+                ) => {
+                    type B = $Backend<f32>;
+                    let $a_inner = $a_inner.$a_kind();
+                    let $b_inner = $b_inner.$b_kind();
+                    let $c_inner = $c_inner.$c_kind();
+                    crate::DispatchTensor {
+                        kind: crate::DispatchTensorKind::$Backend(crate::BackendTensor::Int($body)),
+                        checkpointing,
+                    }
+                }
+            )*
+            #[allow(unreachable_patterns)]
+            (a, b, c) => {
+                panic!(
+                    "The provided tensors are not on the same backend. Got backends {:?}, {:?} and {:?}.",
+                    a, b, c
+                );
+            }
+        }
+    }};
+}
+
+macro_rules! ternary_int_op {
+    (($a:expr, $a_kind:ident), ($b:expr, $b_kind:ident), ($c:expr, $c_kind:ident), |$a_inner:ident, $b_inner:ident, $c_inner:ident| $body:expr) => {
+        backend_list!(
+            ternary_int_op_arms,
+            ($a, $a_kind),
+            ($b, $b_kind),
+            ($c, $c_kind),
+            |$a_inner, $b_inner, $c_inner| { $body }
+        )
+    };
+}
+
 impl IntTensorOps<Self> for Dispatch {
     fn int_empty(shape: Shape, device: &DispatchDevice, dtype: IntDType) -> IntTensor<Self> {
         creation_op!(Int, device, |device| B::int_empty(shape, device, dtype))
@@ -245,6 +302,20 @@ impl IntTensorOps<Self> for Dispatch {
 
     fn int_xnor_popcount_matmul(lhs: IntTensor<Self>, rhs: IntTensor<Self>) -> IntTensor<Self> {
         binary_op!((lhs, int), (rhs, int), |lhs, rhs| B::int_xnor_popcount_matmul(lhs, rhs) => Int)
+    }
+
+    fn int_packed_attention_step(
+        query: IntTensor<Self>,
+        keys: IntTensor<Self>,
+        values: IntTensor<Self>,
+        threshold: i64,
+    ) -> IntTensor<Self> {
+        ternary_int_op!(
+            (query, int),
+            (keys, int),
+            (values, int),
+            |query, keys, values| B::int_packed_attention_step(query, keys, values, threshold)
+        )
     }
 
     fn int_pack_bits(bits: IntTensor<Self>) -> IntTensor<Self> {

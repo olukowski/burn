@@ -104,6 +104,15 @@ where
         kernel::xnor_popcount_matmul(lhs, rhs)
     }
 
+    fn int_packed_attention_step(
+        query: IntTensor<Self>,
+        keys: IntTensor<Self>,
+        values: IntTensor<Self>,
+        threshold: i64,
+    ) -> IntTensor<Self> {
+        kernel::packed_attention_step(query, keys, values, threshold)
+    }
+
     fn int_pack_bits(bits: IntTensor<Self>) -> IntTensor<Self> {
         kernel::pack_bits(bits)
     }

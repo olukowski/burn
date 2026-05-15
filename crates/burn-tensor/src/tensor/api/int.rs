@@ -161,6 +161,27 @@ impl<const D: usize> Tensor<D, Int> {
         ))
     }
 
+    /// Computes a packed binary hard-attention step.
+    ///
+    /// Shapes:
+    /// * `self`: `[batch, heads, head_words]`
+    /// * `keys`: `[batch, heads, sequence, head_words]`
+    /// * `values`: `[batch, heads, sequence, head_words]`
+    /// * output: `[batch, heads, head_words]`
+    pub fn packed_attention_step(
+        self,
+        keys: Tensor<4, Int>,
+        values: Tensor<4, Int>,
+        threshold: i64,
+    ) -> Tensor<3, Int> {
+        Tensor::new(Dispatch::int_packed_attention_step(
+            self.primitive,
+            keys.primitive,
+            values.primitive,
+            threshold,
+        ))
+    }
+
     /// Applies the bitwise logical and operation with each bit in the scalar and the integers in the tensor.
     pub fn bitwise_and_scalar(self, other: impl ElementConversion) -> Self {
         let other = Scalar::new(other, &self.dtype());

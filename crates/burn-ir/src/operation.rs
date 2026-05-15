@@ -706,6 +706,8 @@ pub enum IntOperationIr {
     PackBits(PackBitsOpIr),
     /// Operation corresponding to [xnor_popcount_matmul](burn_backend::ops::IntTensorOps::int_xnor_popcount_matmul).
     XnorPopcountMatmul(MatmulOpIr),
+    /// Operation corresponding to packed binary hard attention.
+    PackedAttentionStep(PackedAttentionStepOpIr),
 }
 
 /// Operation intermediate representation specific to a bool tensor.
@@ -847,6 +849,16 @@ pub struct MatmulOpIr {
 #[allow(missing_docs)]
 pub struct PackBitsOpIr {
     pub input: TensorIr,
+    pub out: TensorIr,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Serialize, Deserialize)]
+#[allow(missing_docs)]
+pub struct PackedAttentionStepOpIr {
+    pub query: TensorIr,
+    pub keys: TensorIr,
+    pub values: TensorIr,
+    pub threshold: i64,
     pub out: TensorIr,
 }
 
@@ -2650,6 +2662,9 @@ impl IntOperationIr {
             IntOperationIr::XnorPopcountMatmul(repr) => {
                 Box::new([&repr.lhs, &repr.rhs].into_iter())
             }
+            IntOperationIr::PackedAttentionStep(repr) => {
+                Box::new([&repr.query, &repr.keys, &repr.values].into_iter())
+            }
             IntOperationIr::IntoFloat(repr) => Box::new([&repr.input].into_iter()),
             IntOperationIr::BitwiseAnd(repr) => Box::new([&repr.lhs, &repr.rhs].into_iter()),
             IntOperationIr::BitwiseAndScalar(repr) => Box::new([&repr.lhs].into_iter()),
@@ -2671,6 +2686,7 @@ impl IntOperationIr {
             IntOperationIr::Matmul(repr) => Box::new([&repr.out].into_iter()),
             IntOperationIr::PackBits(repr) => Box::new([&repr.out].into_iter()),
             IntOperationIr::XnorPopcountMatmul(repr) => Box::new([&repr.out].into_iter()),
+            IntOperationIr::PackedAttentionStep(repr) => Box::new([&repr.out].into_iter()),
             IntOperationIr::IntoFloat(repr) => Box::new([&repr.out].into_iter()),
             IntOperationIr::BitwiseAnd(repr) => Box::new([&repr.out].into_iter()),
             IntOperationIr::BitwiseAndScalar(repr) => Box::new([&repr.out].into_iter()),
@@ -2701,6 +2717,11 @@ impl IntOperationIr {
             IntOperationIr::XnorPopcountMatmul(repr) => {
                 repr.lhs.mark_read_only(nodes, &mut output);
                 repr.rhs.mark_read_only(nodes, &mut output);
+            }
+            IntOperationIr::PackedAttentionStep(repr) => {
+                repr.query.mark_read_only(nodes, &mut output);
+                repr.keys.mark_read_only(nodes, &mut output);
+                repr.values.mark_read_only(nodes, &mut output);
             }
             IntOperationIr::IntoFloat(repr) => {
                 repr.input.mark_read_only(nodes, &mut output);

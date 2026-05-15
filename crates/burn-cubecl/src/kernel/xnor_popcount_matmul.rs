@@ -84,3 +84,125 @@ pub(crate) fn xnor_popcount_matmul<R: CubeRuntime>(
 
     output
 }
+
+#[cube(launch_unchecked, address_type = "dynamic")]
+fn packed_attention_step_kernel<I: Int>(
+    query: &LinearView<I>,
+    keys: &LinearView<I>,
+    values: &LinearView<I>,
+    output: &mut LinearView<I, ReadWrite>,
+    #[comptime] heads: usize,
+    #[comptime] sequence: usize,
+    #[comptime] head_words: usize,
+    #[comptime] threshold: i64,
+    #[define(I)] _dtype: StorageType,
+) {
+    let out_pos = ABSOLUTE_POS;
+
+    if !output.is_in_bounds(out_pos) {
+        terminate!();
+    }
+
+    let word = out_pos % head_words;
+    let head = (out_pos / head_words) % heads;
+    let batch = out_pos / (heads * head_words);
+    let query_base = (batch * heads + head) * head_words;
+    let cache_base = ((batch * heads + head) * sequence) * head_words;
+    let mut packed = I::new(0);
+
+    #[unroll]
+    for bit in 0..32 {
+        let mut selected = I::new(0);
+        let mut value_ones = I::new(0);
+
+        for token in 0..sequence {
+            let mut score = I::new(0);
+
+            for score_word in 0..head_words {
+                let query_value = query[query_base + score_word];
+                let key_value = keys[cache_base + token * head_words + score_word];
+                score += I::cast_from((!(query_value ^ key_value)).count_ones());
+            }
+
+            if score >= I::new(threshold) {
+                selected += I::new(1);
+
+                let value = values[cache_base + token * head_words + word];
+                value_ones += (value >> I::new(comptime![bit as i64])) & I::new(1);
+            }
+        }
+
+        if selected > I::new(0) && value_ones + value_ones >= selected {
+            packed |= I::new(1) << I::new(comptime![bit as i64]);
+        }
+    }
+
+    output[out_pos] = packed;
+}
+
+pub(crate) fn packed_attention_step<R: CubeRuntime>(
+    query: CubeTensor<R>,
+    keys: CubeTensor<R>,
+    values: CubeTensor<R>,
+    threshold: i64,
+) -> CubeTensor<R> {
+    let query_shape = query.shape();
+    let keys_shape = keys.shape();
+    let values_shape = values.shape();
+
+    assert_eq!(query_shape.num_dims(), 3);
+    assert_eq!(keys_shape.num_dims(), 4);
+    assert_eq!(values_shape.num_dims(), 4);
+
+    let query_dims = query_shape.dims::<3>();
+    let keys_dims = keys_shape.dims::<4>();
+    let values_dims = values_shape.dims::<4>();
+
+    assert_eq!(query_dims[0], keys_dims[0]);
+    assert_eq!(query_dims[0], values_dims[0]);
+    assert_eq!(query_dims[1], keys_dims[1]);
+    assert_eq!(query_dims[1], values_dims[1]);
+    assert_eq!(query_dims[2], keys_dims[3]);
+    assert_eq!(query_dims[2], values_dims[3]);
+    assert_eq!(keys_dims[2], values_dims[2]);
+
+    let heads = query_dims[1];
+    let sequence = keys_dims[2];
+    let head_words = query_dims[2];
+    let output_shape = burn_backend::Shape::from(query_dims);
+
+    let query = into_contiguous(query);
+    let keys = into_contiguous(keys);
+    let values = into_contiguous(values);
+    let output = empty_device_dtype(
+        query.client.clone(),
+        query.device.clone(),
+        output_shape,
+        query.dtype,
+    );
+
+    let num_elems = output.meta.num_elements();
+    let cube_dim = CubeDim::new(&query.client, num_elems);
+    let cube_count = calculate_cube_count_elemwise(&query.client, num_elems, cube_dim);
+    let dtype = query.dtype;
+
+    unsafe {
+        packed_attention_step_kernel::launch_unchecked::<R>(
+            &output.client,
+            cube_count,
+            cube_dim,
+            address_type!(query, keys, values, output),
+            query.into_linear_view(),
+            keys.into_linear_view(),
+            values.into_linear_view(),
+            output.clone().into_linear_view(),
+            heads,
+            sequence,
+            head_words,
+            threshold,
+            dtype.into(),
+        );
+    }
+
+    output
+}

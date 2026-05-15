@@ -794,6 +794,22 @@ pub trait IntTensorOps<B: Backend> {
         })
     }
 
+    /// Packed binary hard-attention step.
+    ///
+    /// Shapes are `[batch, heads, head_words]` for `query`,
+    /// `[batch, heads, sequence, head_words]` for `keys` and `values`, and
+    /// `[batch, heads, head_words]` for the output.
+    fn int_packed_attention_step(
+        query: IntTensor<B>,
+        keys: IntTensor<B>,
+        values: IntTensor<B>,
+        threshold: i64,
+    ) -> IntTensor<B> {
+        unimplemented!(
+            "packed_attention_step is not implemented for this backend: {query:?} {keys:?} {values:?} {threshold:?}"
+        )
+    }
+
     /// Packs each `[32]` row of a binary int tensor into a single 32-bit word.
     ///
     /// Shape is `[..., 32] -> [...]`. Input values are expected to be 0 or 1.

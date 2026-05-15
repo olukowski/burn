@@ -229,6 +229,50 @@ impl<B: FusionBackend> IntTensorOps<Self> for Fusion<B> {
             .output()
     }
 
+    fn int_packed_attention_step(
+        query: IntTensor<Self>,
+        keys: IntTensor<Self>,
+        values: IntTensor<Self>,
+        threshold: i64,
+    ) -> IntTensor<Self> {
+        #[derive(new, Debug)]
+        struct PackedAttentionStepOps<B: FusionBackend> {
+            desc: PackedAttentionStepOpIr,
+            _b: PhantomData<B>,
+        }
+
+        impl<B: FusionBackend> Operation<B::FusionRuntime> for PackedAttentionStepOps<B> {
+            fn execute(&self, handles: &mut HandleContainer<B::Handle>) {
+                let query = handles.get_int_tensor::<B>(&self.desc.query);
+                let keys = handles.get_int_tensor::<B>(&self.desc.keys);
+                let values = handles.get_int_tensor::<B>(&self.desc.values);
+                let output =
+                    B::int_packed_attention_step(query, keys, values, self.desc.threshold);
+
+                handles.register_int_tensor::<B>(&self.desc.out.id, output);
+            }
+        }
+
+        let streams = OperationStreams::with_inputs([&query, &keys, &values]);
+
+        let client = query.client.clone();
+        let desc = PackedAttentionStepOpIr::create(
+            query.into_ir(),
+            keys.into_ir(),
+            values.into_ir(),
+            threshold,
+            || client.create_empty_handle(),
+        );
+
+        client
+            .register(
+                streams,
+                OperationIr::Int(IntOperationIr::PackedAttentionStep(desc.clone())),
+                PackedAttentionStepOps::<B>::new(desc),
+            )
+            .output()
+    }
+
     fn int_pack_bits(bits: IntTensor<Self>) -> IntTensor<Self> {
         unary_int_ops!(PackBitsOps, B::int_pack_bits);
 

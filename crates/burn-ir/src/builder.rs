@@ -141,6 +141,40 @@ impl From<PackBitsOpIr> for UnaryOpIr {
     }
 }
 
+impl PackedAttentionStepOpIr {
+    pub fn create(
+        query: TensorIr,
+        keys: TensorIr,
+        values: TensorIr,
+        threshold: i64,
+        new_id: impl FnOnce() -> TensorId,
+    ) -> Self {
+        assert_eq!(query.shape.rank(), 3, "query must be rank 3");
+        assert_eq!(keys.shape.rank(), 4, "keys must be rank 4");
+        assert_eq!(values.shape.rank(), 4, "values must be rank 4");
+        assert_eq!(query.shape[0], keys.shape[0], "batch sizes must match");
+        assert_eq!(query.shape[0], values.shape[0], "batch sizes must match");
+        assert_eq!(query.shape[1], keys.shape[1], "head counts must match");
+        assert_eq!(query.shape[1], values.shape[1], "head counts must match");
+        assert_eq!(query.shape[2], keys.shape[3], "head word counts must match");
+        assert_eq!(
+            query.shape[2], values.shape[3],
+            "head word counts must match"
+        );
+        assert_eq!(keys.shape[2], values.shape[2], "cache lengths must match");
+
+        let out = TensorIr::uninit(new_id(), query.shape.clone(), query.dtype);
+
+        Self {
+            query,
+            keys,
+            values,
+            threshold,
+            out,
+        }
+    }
+}
+
 impl From<ReduceOpIr> for UnaryOpIr {
     fn from(value: ReduceOpIr) -> Self {
         Self {
