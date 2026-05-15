@@ -712,8 +712,8 @@ impl TraceOperationFuser {
                 self.current_output_shape.clone_from(&desc.out.shape);
 
                 self.fuser.fuse(|build| {
-                    let lhs = build.input_unhandled_view(&desc.lhs);
-                    let rhs = build.input_unhandled_view(&desc.rhs);
+                    let lhs = build.input_xnor_operand(&desc.lhs)?;
+                    let rhs = build.input_xnor_operand(&desc.rhs)?;
                     let out = build.output(&desc.out)?;
                     let lhs_dims = desc.lhs.shape.dims::<2>();
                     let rhs_dims = desc.rhs.shape.dims::<2>();

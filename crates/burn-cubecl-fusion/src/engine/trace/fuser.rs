@@ -225,6 +225,27 @@ impl TraceFuser {
         }
     }
 
+    /// Register an XNOR-popcount operand.
+    ///
+    /// Virtual packed/reshaped views must stay unhandled so the custom XNOR
+    /// codegen can read logical scalar words directly. Normal tensors should go
+    /// through the regular block input path so operands produced earlier in the
+    /// same fusion block are read from locals instead of requiring a materialized
+    /// handle.
+    pub fn input_xnor_operand(&mut self, tensor: &TensorIr) -> Option<FuseArg> {
+        let has_view = self.resources.views.iter().any(|view| match view {
+            TensorView::PackBits { packed, .. } => *packed == tensor.id,
+            TensorView::Reshape { reshaped, .. } => *reshaped == tensor.id,
+            _ => false,
+        });
+
+        if has_view {
+            Some(self.input_unhandled_view(tensor))
+        } else {
+            self.input(tensor)
+        }
+    }
+
     fn tensor_by_id(&self, tensor_id: burn_ir::TensorId) -> Option<TensorIr> {
         self.resources
             .inputs
