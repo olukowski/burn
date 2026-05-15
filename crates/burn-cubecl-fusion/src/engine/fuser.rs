@@ -1,6 +1,6 @@
 use super::{
     codegen::ir::{BinaryFuseArgs, FuseArg, FuseOp, UnaryFuseArgs, XnorPopcountMatmulFuseArgs},
-    settings::{FuseSettings, VectorizationSetting},
+    settings::FuseSettings,
     trace::{block::QuantInput, FuseTrace, TraceFuser},
 };
 use crate::engine::{codegen::ir::QuantSchemeFuse, scoring::Scoring};
@@ -710,11 +710,6 @@ impl TraceOperationFuser {
             }
             IntOperationIr::XnorPopcountMatmul(desc) => {
                 self.current_output_shape.clone_from(&desc.out.shape);
-
-                if self.num_ops == 0 {
-                    self.settings.vectorization = VectorizationSetting::Deactivated;
-                    self.fuser = TryTraceFuser::new(self.max_bindings, self.settings);
-                }
 
                 self.fuser.fuse(|build| {
                     let lhs = build.input_unhandled_view(&desc.lhs);

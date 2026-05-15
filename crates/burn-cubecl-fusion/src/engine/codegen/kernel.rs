@@ -1099,11 +1099,11 @@ fn read_fused_input_linear<C: Int, N: Size>(
     match arg {
         FuseArg::Input(pos, ..) => {
             let tensor = inputs.tensors.index(pos);
-            C::cast_from(tensor.tensor[index][0])
+            read_logical_scalar::<C, N>(&tensor.tensor, index)
         }
         FuseArg::Output(pos, ..) => {
             let tensor = outputs.tensors.index(pos);
-            C::cast_from(tensor.tensor[index][0])
+            read_logical_scalar::<C, N>(&tensor.tensor, index)
         }
         FuseArg::InputReshaped {
             original, shape, ..
@@ -1115,7 +1115,7 @@ fn read_fused_input_linear<C: Int, N: Size>(
                     index,
                     comptime![shape.len()],
                 );
-                C::cast_from(tensor.tensor[index][0])
+                read_logical_scalar::<C, N>(&tensor.tensor, index)
             }
             original => {
                 read_fused_input_linear::<C, N>(inputs, outputs, locals, index, original, config)
@@ -1142,6 +1142,20 @@ fn read_fused_input_linear<C: Int, N: Size>(
         }
         _ => read::<C, N>(inputs, outputs, locals, index, arg, config)[0],
     }
+}
+
+#[cube]
+fn read_logical_scalar<C: Scalar, N: Size>(
+    tensor: &Tensor<Vector<DynElem, DynSize>>,
+    index: usize,
+) -> C {
+    set_polyfill_typed::<Vector<C, N>, DynElem, DynSize>();
+
+    let vector_size = tensor.vector_size();
+    let vector_index = index / vector_size;
+    let lane_index = index % vector_size;
+
+    C::cast_from(tensor[vector_index][lane_index])
 }
 
 #[cube]
