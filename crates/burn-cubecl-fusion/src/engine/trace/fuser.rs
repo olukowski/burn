@@ -3,8 +3,8 @@ use super::{
         codegen::ir::{FuseArg, FuseOp, FuseType, LayoutInfo},
         settings::FuseSettings,
     },
-    block::FuseBlockBuilder,
     FuseResources,
+    block::FuseBlockBuilder,
 };
 use super::{FuseTrace, RegisteredTensors, TensorView};
 use crate::engine::trace::block::QuantInput;
@@ -171,13 +171,17 @@ impl TraceFuser {
     /// Register an input tensor that won't be automatically read into a local variable,
     /// preserving virtual input views when the tensor is the output of a reshape.
     pub fn input_unhandled_view(&mut self, tensor: &TensorIr) -> FuseArg {
+        self.input_view(tensor, false)
+    }
+
+    fn input_view(&mut self, tensor: &TensorIr, materialize_leaf: bool) -> FuseArg {
         if let Some(original_tensor) = self.resources.views.iter().find_map(|view| match view {
             TensorView::PackBits { packed, original } if *packed == tensor.id => {
                 Some(original.clone())
             }
             _ => None,
         }) {
-            let original = self.input_unhandled_view(&original_tensor);
+            let original = self.input_view(&original_tensor, true);
 
             return FuseArg::InputPackedBits {
                 original: Box::new(original),
@@ -195,7 +199,12 @@ impl TraceFuser {
         });
 
         let Some((original_id, reshape_pos, rank)) = view else {
-            return self.input_unhandled(tensor);
+            return if materialize_leaf {
+                self.input(tensor)
+                    .expect("XNOR-popcount packed input must be a supported integer tensor")
+            } else {
+                self.input_unhandled(tensor)
+            };
         };
 
         if self.resources.indexed.contains_key(&tensor.id)
@@ -208,7 +217,7 @@ impl TraceFuser {
             .tensor_by_id(original_id)
             .unwrap_or_else(|| panic!("Reshaped XNOR-popcount input must have an original tensor"));
 
-        let original = self.input_unhandled_view(&original_tensor);
+        let original = self.input_view(&original_tensor, materialize_leaf);
         let mut shape = Vec::with_capacity(rank);
 
         for i in 0..rank {
@@ -227,11 +236,10 @@ impl TraceFuser {
 
     /// Register an XNOR-popcount operand.
     ///
-    /// Virtual packed/reshaped views must stay unhandled so the custom XNOR
-    /// codegen can read logical scalar words directly. Normal tensors should go
-    /// through the regular block input path so operands produced earlier in the
-    /// same fusion block are read from locals instead of requiring a materialized
-    /// handle.
+    /// Virtual packed/reshaped views must stay visible so the custom XNOR
+    /// codegen can read logical scalar words directly. Normal tensors stay
+    /// unhandled because XNOR-popcount matmul performs random linear reads, not
+    /// one read at the current elementwise position.
     pub fn input_xnor_operand(&mut self, tensor: &TensorIr) -> Option<FuseArg> {
         let has_view = self.resources.views.iter().any(|view| match view {
             TensorView::PackBits { packed, .. } => *packed == tensor.id,
@@ -242,7 +250,7 @@ impl TraceFuser {
         if has_view {
             Some(self.input_unhandled_view(tensor))
         } else {
-            self.input(tensor)
+            Some(self.input_unhandled(tensor))
         }
     }
 

@@ -1,9 +1,9 @@
 use super::tensor::GlobalTensor;
 use crate::engine::codegen::{DynElem, DynSize};
 use burn_std::{
-    bf16, f16,
+    BoolStore, DType, Shape, Strides, bf16, f16,
     quantization::{QuantScheme, QuantStore, QuantValue},
-    strides, BoolStore, DType, Shape, Strides,
+    strides,
 };
 use core::fmt::Display;
 use cubecl::{
@@ -612,10 +612,6 @@ pub struct XnorPopcountMatmulFuseArgs {
     pub lhs: FuseArg,
     pub rhs: FuseArg,
     pub out: FuseArg,
-    #[cube(comptime)]
-    pub words: usize,
-    #[cube(comptime)]
-    pub out_features: usize,
 }
 
 #[derive(

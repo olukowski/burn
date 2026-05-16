@@ -1,7 +1,7 @@
 use super::{
     codegen::ir::{BinaryFuseArgs, FuseArg, FuseOp, UnaryFuseArgs, XnorPopcountMatmulFuseArgs},
     settings::FuseSettings,
-    trace::{block::QuantInput, FuseTrace, TraceFuser},
+    trace::{FuseTrace, TraceFuser, block::QuantInput},
 };
 use crate::engine::{codegen::ir::QuantSchemeFuse, scoring::Scoring};
 use burn_fusion::{FuserProperties, FuserStatus, OperationFuser};
@@ -10,8 +10,8 @@ use burn_ir::{
     NumericOperationIr, OperationIr, ScalarOpIr, TensorIr, UnaryOpIr,
 };
 use burn_std::{
-    config::{fusion::FusionLogLevel, log_fusion},
     DType, Shape,
+    config::{fusion::FusionLogLevel, log_fusion},
 };
 use cubecl::ir::ElemType;
 
@@ -155,17 +155,17 @@ impl OperationFuser<FuseTrace> for TraceOperationFuser {
             }
             OperationIr::Bool(ops) => {
                 if let BoolOperationIr::PackBits(_) = ops {
-                if !self.fuse_bool(ops) {
-                    self.status = FuserStatus::Closed;
-                    self.log_closed(op, prev_num_ops, "bool fuse rejected");
-                } else {
-                    self.status = match prev_num_ops {
-                        0 => FuserStatus::Open,
-                        _ => FuserStatus::Closed,
-                    };
-                    self.scoring.register(op);
-                    self.num_ops += 1;
-                }
+                    if !self.fuse_bool(ops) {
+                        self.status = FuserStatus::Closed;
+                        self.log_closed(op, prev_num_ops, "bool fuse rejected");
+                    } else {
+                        self.status = match prev_num_ops {
+                            0 => FuserStatus::Open,
+                            _ => FuserStatus::Closed,
+                        };
+                        self.scoring.register(op);
+                        self.num_ops += 1;
+                    }
                     return;
                 }
 
@@ -715,15 +715,11 @@ impl TraceOperationFuser {
                     let lhs = build.input_xnor_operand(&desc.lhs)?;
                     let rhs = build.input_xnor_operand(&desc.rhs)?;
                     let out = build.output(&desc.out)?;
-                    let lhs_dims = desc.lhs.shape.dims::<2>();
-                    let rhs_dims = desc.rhs.shape.dims::<2>();
 
                     build.fuse_operation(FuseOp::XnorPopcountMatmul(XnorPopcountMatmulFuseArgs {
                         lhs,
                         rhs,
                         out,
-                        words: lhs_dims[1],
-                        out_features: rhs_dims[1],
                     }));
 
                     Some(())
